@@ -69,6 +69,49 @@ graph TD
 
 **CSV Log:** the output of the monitor script, one row per decoded frame with timestamp and signal values.
 
+## Project Structure
+
+```
+vcan-sim/
+│
+├── src/
+│   ├── common/                         # Platform-independent core
+│   │   ├── can_frame.h                 # CanFrame struct
+│   │   ├── ican_driver.h               # Abstract CAN driver interface
+│   │   ├── signal_encoder.h / .cpp     # Bit encoding / decoding
+│   │   └── base_ecu.h / .cpp           # Abstract base class for all ECUs
+│   │
+│   ├── platform/
+│   │   └── socketcan/                  # Linux SocketCAN driver
+│   │       ├── socketcan_driver.h
+│   │       └── socketcan_driver.cpp
+│   │
+│   ├── ecu/                            # ECU simulators
+│   │   ├── motor_ecu.h / .cpp
+│   │   └── abs_ecu.h / .cpp
+│   │
+│   └── monitor/
+│       └── can_monitor.py              # Live decoder + CSV logger
+│
+├── tests/
+│   ├── unit/
+│   │   └── test_signal_encoding.cpp    # GoogleTest
+│   └── integration/
+│       └── test_frames.py              # Python integration tests
+│
+├── dbc/
+│   └── vcansim.dbc                     # Signal definitions
+│
+├── docs/
+│   ├── requirements.md
+│   └── architecture.md
+│
+├── scripts/
+│   └── setup_vcan.sh                   # One-shot vcan0 setup
+│
+└── CMakeLists.txt
+```
+
 ## License
 
 MIT
