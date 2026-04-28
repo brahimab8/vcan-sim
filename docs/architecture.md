@@ -11,7 +11,7 @@ VcanSim is structured in four layers. Each layer has a single responsibility and
 | ECU Layer | `src/ecu/` | C++ | What each ECU sends and when |
 | Driver Layer | `src/platform/` | C++ | Hardware-specific CAN driver implementation |
 | Common Layer | `src/common/` | C++ | Platform-independent types, interface, signal encoding, and abstract ECU base class |
-| Monitoring | `src/monitor/` | Python | DBC decoding, CSV logging, integration tests |
+| Monitoring | `src/monitor/` | Python | DBC decoding, CSV logging. Integration tests validate ECU behavior against DBC expectations. |
 
 ## Class Diagram
 
@@ -20,7 +20,7 @@ classDiagram
     class CanFrame {
         +uint32_t id
         +uint8_t dlc
-        +array~uint8_t~ data
+        +array~uint8_t, CAN_MAX_DLC~ data
     }
 
     class ICanDriver {
@@ -40,17 +40,17 @@ classDiagram
     class BaseEcu {
         <<abstract>>
         #ICanDriver& driver
-        -volatile bool running
+        -bool running
         +BaseEcu(ICanDriver&)
-        +run() void*
+        #start() void
+        +run() void
         +stop() void
     }
 
     class MotorEcu {
         +MotorEcu(ICanDriver&)
         +run() void
-        -sendRpm(uint16_t) void
-        -sendTemperature(int8_t) void
+        -sendMotorFrame(uint16_t, int8_t) void
     }
 
     class AbsEcu {
@@ -59,25 +59,21 @@ classDiagram
         -sendWheelSpeeds(float, float, float, float) void
     }
 
-    class SignalEncoder {
-        <<utility>>
-        +encodeRpm(uint16_t) CanFrame
-        +encodeTemperature(int8_t) CanFrame
-        +encodeWheelSpeeds(float, float, float, float) CanFrame
-        +decodeRpm(CanFrame) uint16_t
-        +decodeTemperature(CanFrame) int8_t
-        +decodeWheelSpeeds(CanFrame) array~float~
-    }
-
     ICanDriver ..> CanFrame
     ICanDriver <|-- SocketCanDriver
     BaseEcu <|-- MotorEcu
     BaseEcu <|-- AbsEcu
     BaseEcu ..> ICanDriver
-    MotorEcu ..> SignalEncoder
-    AbsEcu ..> SignalEncoder
-    SignalEncoder ..> CanFrame
 ```
+
+## Signal Encoding
+
+Signal encoding is handled by the `SignalEncoder` namespace in `src/common/signal_encoder.h`.
+It provides primitive byte-level operations only: `encodeUint16LE`, `encodeUint8`, `decodeUint16LE`, `decodeUint8`.
+Each ECU class applies its own scaling and offset before calling these primitives.
+All functions return `bool` and perform bounds checking internally.
+
+Both `MotorEcu` and `AbsEcu` depend on `SignalEncoder` for frame payload construction.
 
 ## ICanDriver Interface
 
@@ -94,11 +90,12 @@ public:
 };
 ```
 
-ECUs are constructed via `BaseEcu` with a driver reference and have no dependency on SocketCAN directly:
+ECUs are constructed via `BaseEcu` with a driver reference and have no dependency on SocketCAN directly.
+`BaseEcu` does not own the driver. The caller is responsible for ensuring the driver outlives the ECU.
 
 ```cpp
 // base_ecu.cpp
-BaseEcu::BaseEcu(ICanDriver& driver) : driver_(driver), running_(false) {}
+BaseEcu::BaseEcu(ICanDriver& driver) : driver_(driver) {}
 
 // motor_ecu.cpp: knows nothing about Linux or SocketCAN
 MotorEcu::MotorEcu(ICanDriver& driver) : BaseEcu(driver) {}
@@ -107,7 +104,7 @@ MotorEcu::MotorEcu(ICanDriver& driver) : BaseEcu(driver) {}
 Usage:
 
 ```cpp
-SocketCanDriver driver("vcan0");
+SocketCanDriver driver("vcan0");  // driver must outlive motor
 MotorEcu motor(driver);
 motor.run();
 ```
@@ -137,5 +134,7 @@ This ensures signal encoding logic is testable without any SocketCAN dependency.
 | `cantools` for Python decoding | Industry-standard tool used in real automotive projects |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
 | `BaseEcu` abstract class | Shared lifecycle and driver reference, avoids duplication across ECUs |
-| No dynamic memory for frame data | Closer to resource-constrained embedded targets |
+| `bool` return for driver and encoder | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
+| Single-threaded ECU design | Each ECU runs a blocking loop controlled by `run()` and `stop()`. No internal threading. Each ECU is launched as an independent process. |
+| No dynamic memory for frame data | Fixed-size frame payload: `std::array` on stack, no heap allocation |
 | `vcan` over simulation framework | Real Linux kernel CAN stack, not a mock |
