@@ -1,7 +1,8 @@
 #include "base_ecu.h"
 
-BaseEcu::BaseEcu(ICanDriver& driver)
+BaseEcu::BaseEcu(ICanDriver& driver, ITimer& timer)
     : driver_(driver)
+    , timer_(timer)
 {
 }
 
