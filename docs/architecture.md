@@ -9,8 +9,8 @@ VcanSim is structured in four layers. Each layer has a single responsibility and
 | Layer | Path | Language | Responsibility |
 |---|---|---|---|
 | ECU Layer | `src/ecu/` | C++ | What each ECU sends and when |
-| Driver Layer | `src/platform/` | C++ | Hardware-specific CAN driver implementation |
-| Common Layer | `src/common/` | C++ | Platform-independent types, interface, signal encoding, and abstract ECU base class |
+| Driver Layer | `src/platform/linux/` | C++ | Hardware-specific CAN driver and timer implementation |
+| Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, signal encoding, and abstract ECU base class |
 | Monitoring | `src/monitor/` | Python | DBC decoding, CSV logging. Integration tests validate ECU behavior against DBC expectations. |
 
 ## Class Diagram
@@ -37,33 +37,45 @@ classDiagram
         +receive(CanFrame) bool
     }
 
+    class ITimer {
+        <<interface>>
+        +sleepMs(uint32_t) void
+    }
+
+    class LinuxTimer {
+        +sleepMs(uint32_t) void
+    }
+
     class BaseEcu {
         <<abstract>>
         #ICanDriver& driver
+        #ITimer& timer
         -bool running
-        +BaseEcu(ICanDriver&)
+        +BaseEcu(ICanDriver&, ITimer&)
         #start() void
         +run() void
         +stop() void
     }
 
     class MotorEcu {
-        +MotorEcu(ICanDriver&)
+        +MotorEcu(ICanDriver&, ITimer&)
         +run() void
-        -sendMotorFrame(uint16_t, int8_t) void
+        +tick() void
     }
 
     class AbsEcu {
-        +AbsEcu(ICanDriver&)
+        +AbsEcu(ICanDriver&, ITimer&)
         +run() void
-        -sendWheelSpeeds(float, float, float, float) void
+        +tick() void
     }
 
     ICanDriver ..> CanFrame
     ICanDriver <|-- SocketCanDriver
+    ITimer <|-- LinuxTimer
     BaseEcu <|-- MotorEcu
     BaseEcu <|-- AbsEcu
     BaseEcu ..> ICanDriver
+    BaseEcu ..> ITimer
 ```
 
 ## Signal Encoding
@@ -90,22 +102,25 @@ public:
 };
 ```
 
-ECUs are constructed via `BaseEcu` with a driver reference and have no dependency on SocketCAN directly.
-`BaseEcu` does not own the driver. The caller is responsible for ensuring the driver outlives the ECU.
+ECUs are constructed via `BaseEcu` with a driver and timer reference. No dependency on SocketCAN or any OS-specific code directly.
+`BaseEcu` does not own the driver or timer. The caller is responsible for ensuring both outlive the ECU.
 
 ```cpp
 // base_ecu.cpp
-BaseEcu::BaseEcu(ICanDriver& driver) : driver_(driver) {}
+BaseEcu::BaseEcu(ICanDriver& driver, ITimer& timer)
+    : driver_(driver), timer_(timer) {}
 
 // motor_ecu.cpp: knows nothing about Linux or SocketCAN
-MotorEcu::MotorEcu(ICanDriver& driver) : BaseEcu(driver) {}
+MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer)
+    : BaseEcu(driver, timer) {}
 ```
 
 Usage:
 
 ```cpp
-SocketCanDriver driver("vcan0");  // driver must outlive motor
-MotorEcu motor(driver);
+LinuxTimer      timer;
+SocketCanDriver driver("vcan0");  // both must outlive motor
+MotorEcu        motor(driver, timer);
 motor.run();
 ```
 
@@ -116,13 +131,14 @@ CMake is used with distinct targets per layer:
 | Target | Type | Links Against |
 |---|---|---|
 | `can_common` | Static library | |
+| `can_ecu` | Static library | `can_common` |
 | `can_platform` | Static library | `can_common` |
-| `motor_ecu` | Executable | `can_platform` |
-| `abs_ecu` | Executable | `can_platform` |
-| `unit_tests` | Executable | `can_common`, GoogleTest |
+| `motor_ecu` | Executable | `can_ecu`, `can_platform` |
+| `abs_ecu` | Executable | `can_ecu`, `can_platform` |
+| `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
 
-`unit_tests` links only against `can_common`, not `can_platform`.
-This ensures signal encoding logic is testable without any SocketCAN dependency.
+`unit_tests` links against `can_common` and `can_ecu` only`.
+This ensures ECU logic is testable without any SocketCAN or OS-specific dependency.
 
 ## Key Design Decisions
 
@@ -133,7 +149,8 @@ This ensures signal encoding logic is testable without any SocketCAN dependency.
 | Manual signal encoding in C++ | Demonstrates bit-level understanding of CAN frames |
 | `cantools` for Python decoding | Industry-standard tool used in real automotive projects |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
-| `BaseEcu` abstract class | Shared lifecycle and driver reference, avoids duplication across ECUs |
+| `ITimer` interface | Decouples ECU loop timing from OS-specific sleep |
+| `BaseEcu` abstract class | Shared lifecycle, driver and timer reference, avoids duplication across ECUs |
 | `bool` return for driver and encoder | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
 | Single-threaded ECU design | Each ECU runs a blocking loop controlled by `run()` and `stop()`. No internal threading. Each ECU is launched as an independent process. |
 | No dynamic memory for frame data | Fixed-size frame payload: `std::array` on stack, no heap allocation |

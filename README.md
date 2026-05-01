@@ -2,6 +2,8 @@
 
 > Virtual CAN Network Simulator for Embedded Linux
 
+![CI](https://github.com/brahimab8/vcan-sim/actions/workflows/ci.yml/badge.svg)
+
 VcanSim simulates a multi-ECU CAN network entirely in software, no hardware required.
 Built on Linux SocketCAN (`vcan`), it runs the real kernel CAN stack without any physical CAN interface.
 
@@ -15,14 +17,11 @@ improving portability, testability, and future migration to embedded hardware.
 
 ## Features
 
-- Two C++ ECU simulators inheriting from a shared `BaseEcu` abstract class
-
-- DBC-based signal definition and manual encoding in C++
+- Two C++ ECU simulators producing realistic CAN traffic over a virtual bus
+- DBC-based signal definition (compatible with CANalyzer and cantools) and manual encoding in C++
 - Live signal monitoring and CSV logging via `python-can` and `cantools`
 - Optional raw frame inspection using `candump`
 - GoogleTest unit tests and Python integration tests
-- Driver abstraction via `ICanDriver` interface
-
 ## Architecture
 
 ```mermaid
@@ -78,13 +77,16 @@ vcan-sim/
 │   ├── common/                         # Platform-independent core
 │   │   ├── can_frame.h                 # CanFrame struct
 │   │   ├── ican_driver.h               # Abstract CAN driver interface
+│   │   ├── itimer.h                    # Abstract timer interface
 │   │   ├── signal_encoder.h / .cpp     # Bit encoding / decoding
 │   │   └── base_ecu.h / .cpp           # Abstract base class for all ECUs
 │   │
 │   ├── platform/
-│   │   └── socketcan/                  # Linux SocketCAN driver
-│   │       ├── socketcan_driver.h
-│   │       └── socketcan_driver.cpp
+│   │   └── linux/                      # Linux-specific implementations
+│   │       ├── timer.h / .cpp          # Linux timer (std::this_thread::sleep_for)
+│   │       └── socketcan/              # Linux SocketCAN driver
+│   │           ├── driver.h
+│   │           └── driver.cpp
 │   │
 │   ├── ecu/                            # ECU simulators
 │   │   ├── motor_ecu.h / .cpp
@@ -94,8 +96,13 @@ vcan-sim/
 │       └── can_monitor.py              # Live decoder + CSV logger
 │
 ├── tests/
-│   ├── unit/
-│   │   └── test_signal_encoding.cpp    # GoogleTest
+│   ├── mocks/                          # Test doubles (no hardware dependency)
+│   │   ├── mock_can_driver.h
+│   │   └── mock_timer.h
+│   ├── unit/                           # GoogleTest
+│   │   ├── test_signal_encoding.cpp    
+│   │   ├── test_motor_ecu.cpp          
+│   │   └── test_abs_ecu.cpp            
 │   └── integration/
 │       └── test_frames.py              # Python integration tests
 │
@@ -104,12 +111,40 @@ vcan-sim/
 │
 ├── docs/
 │   ├── requirements.md
-│   └── architecture.md
+│   ├── architecture.md
+│   └── signal-encoding.md
 │
 ├── scripts/
 │   └── setup_vcan.sh                   # One-shot vcan0 setup
 │
 └── CMakeLists.txt
+```
+
+## Getting Started
+
+### Requirements
+
+- Linux with GCC and CMake
+- `libgtest-dev`
+
+### Install Dependencies
+
+```bash
+sudo apt install -y cmake g++ libgtest-dev
+```
+
+### Build
+
+```bash
+mkdir build && cd build
+cmake ..
+```
+
+### Run Unit Tests
+
+```bash
+make unit_tests
+ctest --verbose
 ```
 
 ## License
