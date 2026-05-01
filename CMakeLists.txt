@@ -20,17 +20,37 @@ target_include_directories(can_common PUBLIC
 )
 
 # -----------------------------------------------------------------------------
+# can_ecu: ECU simulators
+# Depends on can_common. No platform or SocketCAN dependency
+# Unit-testable via MockCanDriver and MockTimer
+# -----------------------------------------------------------------------------
+add_library(can_ecu STATIC
+    src/ecu/motor_ecu.cpp
+)
+target_include_directories(can_ecu PUBLIC
+    src/ecu
+)
+target_link_libraries(can_ecu PUBLIC
+    can_common
+)
+
+# -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
-# Links only against can_common
+# Links against can_common and can_ecu  (no platform dependency)
 # -----------------------------------------------------------------------------
 find_package(GTest REQUIRED)
 enable_testing()
 
 add_executable(unit_tests
     tests/unit/test_signal_encoding.cpp
+    tests/unit/test_motor_ecu.cpp
+)
+target_include_directories(unit_tests PRIVATE
+    tests/mocks
 )
 target_link_libraries(unit_tests PRIVATE
     can_common
+    can_ecu
     GTest::GTest
     GTest::Main
 )
