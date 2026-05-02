@@ -21,7 +21,7 @@ uint16_t MotorEcu::rpmToRaw(uint16_t rpm)
     return static_cast<uint16_t>(rpm * RPM_SCALE_FACTOR);
 }
 
-uint8_t MotorEcu::tempToRaw(int8_t temp)
+uint8_t MotorEcu::tempToRaw(int16_t temp)
 {
     return static_cast<uint8_t>(temp + TEMP_OFFSET);
 }
@@ -30,7 +30,7 @@ uint8_t MotorEcu::tempToRaw(int8_t temp)
 void MotorEcu::tick()
 {
     const uint16_t rpm  = RPM_PROFILE[profile_index_];
-    const int8_t   temp = TEMP_PROFILE[profile_index_];
+    const int16_t  temp = TEMP_PROFILE[profile_index_];
 
     profile_index_ = (profile_index_ + 1) % RPM_PROFILE.size();
 

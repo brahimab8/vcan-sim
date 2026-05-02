@@ -22,7 +22,7 @@ public:
 
     // Scaling helpers (public for unit testing)
     static uint16_t rpmToRaw(uint16_t rpm);
-    static uint8_t  tempToRaw(int8_t temp);
+    static uint8_t  tempToRaw(int16_t temp);
     
 private:
     // Cyclic RPM values used by `tick()` (in rpm).
@@ -31,7 +31,7 @@ private:
     };
 
     // Cyclic temperature values used by `tick()` (°C).
-    static constexpr std::array<int8_t, 8> TEMP_PROFILE = {
+    static constexpr std::array<int16_t, 8> TEMP_PROFILE = {
         20, 45, 70, 85, 90, 92, 90, 88
     };
 
@@ -39,7 +39,7 @@ private:
     static constexpr uint8_t  FRAME_DLC = 3;
     static constexpr uint32_t CYCLE_MS  = 100;
     static constexpr uint16_t RPM_SCALE_FACTOR = 2U;   // scale=0.5 -> raw = rpm * 2
-    static constexpr int8_t   TEMP_OFFSET    = 40;     // offset=-40 -> raw = temp + 40
+    static constexpr int16_t  TEMP_OFFSET    = 40;     // offset=-40 -> raw = temp + 40
 
     std::size_t profile_index_{0};  // current position in the simulated profiles
 };

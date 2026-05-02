@@ -58,6 +58,8 @@ Example:
 | temp (°C) | raw | byte 2 |
 |---|---|---|
 | 85 | 125 = `0x7D` | `0x7D` |
+ 
+Note: The physical temperature value in C++ is handled as `int16_t` (range -40 to 150 °C), then encoded on the bus as `uint8` using `raw = temp + 40` (range 0 to 190).
 
 ## ABS ECU (`0x200`)
 
@@ -78,7 +80,7 @@ The DBC file is the single source of truth for signal definitions.
 It follows the standard DBC format used by tools like CANalyzer, CANdb++, and `cantools`.
 
 ```dbc
-BO_ 256 MotorECU: 8 Vector__XXX
+BO_ 256 MotorECU: 3 Vector__XXX
  SG_ RPM         : 0|16@1+ (0.5,0)   [0|8000]  "rpm"  Vector__XXX
  SG_ Temperature : 16|8@1+ (1,-40)   [-40|150] "degC" Vector__XXX
 
