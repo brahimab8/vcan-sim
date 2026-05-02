@@ -26,6 +26,7 @@ target_include_directories(can_common PUBLIC
 # -----------------------------------------------------------------------------
 add_library(can_ecu STATIC
     src/ecu/motor_ecu.cpp
+    src/ecu/abs_ecu.cpp
 )
 target_include_directories(can_ecu PUBLIC
     src/ecu
@@ -44,6 +45,7 @@ enable_testing()
 add_executable(unit_tests
     tests/unit/test_signal_encoding.cpp
     tests/unit/test_motor_ecu.cpp
+    tests/unit/test_abs_ecu.cpp
 )
 target_include_directories(unit_tests PRIVATE
     tests/mocks
