@@ -74,6 +74,8 @@ All four wheel speeds are packed into one 8-byte frame, each as a 16-bit unsigne
 
 Raw formula: `raw = speed / 0.1`
 
+Note: In C++ implementation, ABS wheel speeds are represented internally as deci-km/h integers (0.1 km/h units), and encoded directly as raw uint16 values.
+
 ## DBC File: `dbc/vcansim.dbc`
 
 The DBC file is the single source of truth for signal definitions.

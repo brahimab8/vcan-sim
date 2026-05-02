@@ -9,9 +9,11 @@ VcanSim is structured in four layers. Each layer has a single responsibility and
 | Layer | Path | Language | Responsibility |
 |---|---|---|---|
 | ECU Layer | `src/ecu/` | C++ | What each ECU sends and when |
-| Driver Layer | `src/platform/linux/` | C++ | Hardware-specific CAN driver and timer implementation |
+| Driver Layer | `src/platform/linux/` | C++ | Linux-specific CAN driver, timer implementation, and ECU runner entry points |
 | Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, signal encoding, and abstract ECU base class |
 | Monitoring | `src/monitor/` | Python | DBC decoding, CSV logging. Integration tests validate ECU behavior against DBC expectations. |
+
+The class diagram below describes the ECU responsibilities and dependencies. In the runnable system, the Motor and ABS ECUs are started by separate runner executables, so they execute as independent processes.
 
 ## Class Diagram
 
@@ -46,6 +48,11 @@ classDiagram
         +sleepMs(uint32_t) void
     }
 
+    class ISensor~T~ {
+        <<interface>>
+        +read() T
+    }
+
     class BaseEcu {
         <<abstract>>
         #ICanDriver& driver
@@ -58,13 +65,19 @@ classDiagram
     }
 
     class MotorEcu {
-        +MotorEcu(ICanDriver&, ITimer&)
+        -RpmSensor& rpm_sensor
+        -TempSensor& temp_sensor
+        +MotorEcu(ICanDriver&, ITimer&, RpmSensor&, TempSensor&)
         +run() void
         +tick() void
     }
 
     class AbsEcu {
-        +AbsEcu(ICanDriver&, ITimer&)
+        -WheelSensor& front_left_sensor
+        -WheelSensor& front_right_sensor
+        -WheelSensor& rear_left_sensor
+        -WheelSensor& rear_right_sensor
+        +AbsEcu(ICanDriver&, ITimer&, WheelSensor& x4)
         +run() void
         +tick() void
     }
@@ -72,10 +85,18 @@ classDiagram
     ICanDriver ..> CanFrame
     ICanDriver <|-- SocketCanDriver
     ITimer <|-- LinuxTimer
+
+    RpmSensor --|> ISensor
+    TempSensor --|> ISensor
+    WheelSensor --|> ISensor
+    
     BaseEcu <|-- MotorEcu
     BaseEcu <|-- AbsEcu
     BaseEcu ..> ICanDriver
     BaseEcu ..> ITimer
+    MotorEcu ..> RpmSensor
+    MotorEcu ..> TempSensor
+    AbsEcu ..> WheelSensor
 ```
 
 ## Signal Encoding
@@ -124,6 +145,46 @@ MotorEcu        motor(driver, timer);
 motor.run();
 ```
 
+In the deployed runtime, this construction happens inside a dedicated ECU runner entry point, one per ECU process.
+
+## ISensor Interface
+
+`ISensor<T>` is a template interface that decouples ECU logic from sensor implementations.
+Each ECU injects the sensors it depends on via constructor parameters.
+
+```cpp
+// src/common/isensor.h
+template <typename T>
+class ISensor {
+public:
+    virtual ~ISensor() = default;
+    virtual T read() noexcept = 0;
+};
+
+// Type aliases for concreteness
+using RpmSensor    = ISensor<uint16_t>;  // RPM values
+using TempSensor   = ISensor<int16_t>;   // Temperature in °C
+using WheelSensor  = ISensor<uint16_t>;  // Wheel speed in deci-km/h
+```
+
+**MotorEcu** injects RPM and temperature sensors:
+```cpp
+MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer, 
+                   RpmSensor& rpm, TempSensor& temp)
+    : BaseEcu(driver, timer), rpm_sensor_(rpm), temp_sensor_(temp) {}
+```
+
+**AbsEcu** injects four wheel speed sensors:
+```cpp
+AbsEcu::AbsEcu(ICanDriver& driver, ITimer& timer,
+               WheelSensor& fl, WheelSensor& fr, 
+               WheelSensor& rl, WheelSensor& rr)
+    : BaseEcu(driver, timer), front_left_(fl), front_right_(fr), 
+                               rear_left_(rl), rear_right_(rr) {}
+```
+
+For simulation-oriented builds, `src/sim/` provides header-only implementations (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`) 
+
 ## Build System
 
 CMake is used with distinct targets per layer:
@@ -137,8 +198,11 @@ CMake is used with distinct targets per layer:
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
 
-`unit_tests` links against `can_common` and `can_ecu` only`.
-This ensures ECU logic is testable without any SocketCAN or OS-specific dependency.
+**`unit_tests`** links against `can_common` and `can_ecu` only, ensuring ECU logic is testable without any SocketCAN or OS-specific dependency.
+
+**`can_platform`** contains the reusable Linux platform support code: `SocketCanDriver` and `LinuxTimer`.
+
+**`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
 ## Key Design Decisions
 
@@ -150,6 +214,7 @@ This ensures ECU logic is testable without any SocketCAN or OS-specific dependen
 | `cantools` for Python decoding | Industry-standard tool used in real automotive projects |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
 | `ITimer` interface | Decouples ECU loop timing from OS-specific sleep |
+| `ISensor<T>` template interface | Decouples ECU logic from sensor implementations. Each ECU injects the specific sensors it needs. Enables simulation (header-only `Sim*Sensor` classes) and future hardware integration. |
 | `BaseEcu` abstract class | Shared lifecycle, driver and timer reference, avoids duplication across ECUs |
 | `bool` return for driver and encoder | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
 | Single-threaded ECU design | Each ECU runs a blocking loop controlled by `run()` and `stop()`. No internal threading. Each ECU is launched as an independent process. |

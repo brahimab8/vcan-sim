@@ -13,7 +13,9 @@ VcanSim consists of two simulated ECU nodes that produce realistic CAN traffic o
 and a Python-based monitor that decodes and logs signals in real time using a DBC file.
 
 ECU logic is decoupled from the platform-specific CAN driver via an `ICanDriver` interface,
-improving portability, testability, and future migration to embedded hardware.
+improving portability and testability.
+
+At runtime, the Motor and ABS ECUs are launched by separate runner executables, so they operate as independent processes.
 
 ## Features
 
@@ -78,6 +80,7 @@ vcan-sim/
 │   │   ├── can_frame.h                 # CanFrame struct
 │   │   ├── ican_driver.h               # Abstract CAN driver interface
 │   │   ├── itimer.h                    # Abstract timer interface
+│   │   ├── isensor.h                   # Abstract sensor interface and type aliases
 │   │   ├── signal_encoder.h / .cpp     # Bit encoding / decoding
 │   │   └── base_ecu.h / .cpp           # Abstract base class for all ECUs
 │   │
@@ -92,13 +95,19 @@ vcan-sim/
 │   │   ├── motor_ecu.h / .cpp
 │   │   └── abs_ecu.h / .cpp
 │   │
+│   ├── sim/                            # Simulation sensor implementations
+│   │   ├── rpm_sensor.h
+│   │   ├── temp_sensor.h
+│   │   └── wheel_sensor.h
+│   │
 │   └── monitor/
 │       └── can_monitor.py              # Live decoder + CSV logger
 │
 ├── tests/
 │   ├── mocks/                          # Test doubles (no hardware dependency)
 │   │   ├── mock_can_driver.h
-│   │   └── mock_timer.h
+│   │   ├── mock_timer.h
+│   │   └── mock_sensor.h
 │   ├── unit/                           # GoogleTest
 │   │   ├── test_signal_encoding.cpp    
 │   │   ├── test_motor_ecu.cpp          
