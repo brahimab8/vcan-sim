@@ -2,8 +2,10 @@
 
 #include "signal_encoder.h"
 
-MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer)
+MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer, RpmSensor& rpm_sensor, TempSensor& temp_sensor)
     : BaseEcu(driver, timer)
+    , rpm_sensor_(rpm_sensor)
+    , temp_sensor_(temp_sensor)
 {
 }
 
@@ -29,16 +31,14 @@ uint8_t MotorEcu::tempToRaw(int16_t temp)
 
 void MotorEcu::tick()
 {
-    const uint16_t rpm  = RPM_PROFILE[profile_index_];
-    const int16_t  temp = TEMP_PROFILE[profile_index_];
-
-    profile_index_ = (profile_index_ + 1) % RPM_PROFILE.size();
+    const uint16_t rpm  = rpm_sensor_.read();
+    const int16_t  temp = temp_sensor_.read();
 
     CanFrame frame{};
     frame.id  = CAN_ID;
     frame.dlc = FRAME_DLC;
 
-    // Convert RPM and temperature to raw values according to the DBC definitions 
+    // Convert RPM and temperature to raw values according to the DBC definitions
     // And encode into the frame
     SignalEncoder::encodeUint16LE(frame, 0, rpmToRaw(rpm)); // RPM at offset 0-1
     SignalEncoder::encodeUint8(frame, 2, tempToRaw(temp));  // Temp at offset 2

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "mock_can_driver.h"
+#include "mock_sensor.h"
 #include "mock_timer.h"
 #include "motor_ecu.h"
 #include "signal_encoder.h"
@@ -11,7 +12,9 @@
 struct MotorEcuFixture {
     MockCanDriver driver;
     MockTimer     timer;
-    MotorEcu      ecu{driver, timer};
+    MockSensor<uint16_t> rpm_sensor{{800, 1200}};
+    MockSensor<int16_t>  temp_sensor{{20, 45}};
+    MotorEcu      ecu{driver, timer, rpm_sensor, temp_sensor};
 };
 
 // ---------------------------------------------------------------------------
@@ -77,7 +80,7 @@ TEST(MotorEcuTick, FrameHasCorrectDlc)
 }
 
 // ---------------------------------------------------------------------------
-// Signal values: verifies tick() encodes profile values correctly
+// Signal values: verifies tick() encodes the injected sensor values correctly
 // SignalEncoder is used here as a trusted decode primitive (independently tested)
 // ---------------------------------------------------------------------------
 
@@ -88,7 +91,7 @@ TEST(MotorEcuTick, FirstTickEncodesFirstRpmProfile)
 
     uint16_t raw = 0;
     SignalEncoder::decodeUint16LE(f.driver.sentFrames()[0], 0, raw);
-    EXPECT_EQ(raw, MotorEcu::rpmToRaw(800));  // first profile value
+    EXPECT_EQ(raw, MotorEcu::rpmToRaw(800));  // first injected sensor value
 }
 
 TEST(MotorEcuTick, FirstTickEncodesFirstTempProfile)
@@ -98,18 +101,18 @@ TEST(MotorEcuTick, FirstTickEncodesFirstTempProfile)
 
     uint8_t raw = 0;
     SignalEncoder::decodeUint8(f.driver.sentFrames()[0], 2, raw);
-    EXPECT_EQ(raw, MotorEcu::tempToRaw(20));  // first profile value
+    EXPECT_EQ(raw, MotorEcu::tempToRaw(20));  // first injected sensor value
 }
 
 // ---------------------------------------------------------------------------
-// Profile cycling: verifies profile advances and wraps correctly
+// Sensor input progression: verifies the ECU reads updated values on later ticks
 // ---------------------------------------------------------------------------
 
-TEST(MotorEcuProfile, AdvancesOnEachTick)
+TEST(MotorEcuTick, ReadsUpdatedSensorValuesOnEachTick)
 {
     MotorEcuFixture f;
-    f.ecu.tick();  // index 0: rpm=800
-    f.ecu.tick();  // index 1: rpm=1200
+    f.ecu.tick();  // first injected sensor values
+    f.ecu.tick();  // second injected sensor values
 
     uint16_t raw0 = 0;
     uint16_t raw1 = 0;
@@ -118,20 +121,6 @@ TEST(MotorEcuProfile, AdvancesOnEachTick)
 
     EXPECT_EQ(raw0, MotorEcu::rpmToRaw(800));
     EXPECT_EQ(raw1, MotorEcu::rpmToRaw(1200));
-}
-
-TEST(MotorEcuProfile, WrapsAroundAfterAllValues)
-{
-    MotorEcuFixture f;
-
-    for (int i = 0; i < 8; ++i) {
-        f.ecu.tick();
-    }
-    f.ecu.tick();  // 9th tick wraps to index 0
-
-    uint16_t raw = 0;
-    SignalEncoder::decodeUint16LE(f.driver.sentFrames()[8], 0, raw);
-    EXPECT_EQ(raw, MotorEcu::rpmToRaw(800));  // back to first profile value
 }
 
 // ---------------------------------------------------------------------------
