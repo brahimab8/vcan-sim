@@ -14,16 +14,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libgtest-dev
+          sudo apt-get install -y cmake g++ libgtest-dev python3-venv python3-pip
+
+      - name: Set up Python virtual environment
+        run: |
+          python3 -m venv venv
+          ./venv/bin/pip install --upgrade pip
+          ./venv/bin/pip install -r requirements.txt
 
       - name: Configure
         run: cmake -S . -B build
 
       - name: Build
-        run: cmake --build build --target unit_tests
+        run: cmake --build build -j2
 
-      - name: Run unit tests
+      - name: Run all tests
         run: cd build && ctest --verbose --output-on-failure
