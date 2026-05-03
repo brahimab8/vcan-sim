@@ -58,3 +58,24 @@ target_link_libraries(unit_tests PRIVATE
 )
 
 add_test(NAME unit_tests COMMAND unit_tests)
+
+# -----------------------------------------------------------------------------
+# integration_tests: C++ component integration (no SocketCAN/vcan0 required)
+# Verifies ECU run-loop behavior with injected dependencies
+# -----------------------------------------------------------------------------
+add_executable(integration_tests
+    tests/integration/test_motor_integration.cpp
+    tests/integration/test_abs_integration.cpp
+)
+target_include_directories(integration_tests PRIVATE
+    tests/mocks
+    tests/integration/utils
+)
+target_link_libraries(integration_tests PRIVATE
+    can_common
+    can_ecu
+    GTest::GTest
+    GTest::Main
+)
+
+add_test(NAME integration_tests COMMAND integration_tests)
