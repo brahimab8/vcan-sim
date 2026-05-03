@@ -197,12 +197,18 @@ CMake is used with distinct targets per layer:
 | `motor_ecu` | Executable | `can_ecu`, `can_platform` |
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
-
-**`unit_tests`** links against `can_common` and `can_ecu` only, ensuring ECU logic is testable without any SocketCAN or OS-specific dependency.
-
-**`can_platform`** contains the reusable Linux platform support code: `SocketCanDriver` and `LinuxTimer`.
+| `integration_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
+| `python_integration` | Custom target | (depends on `frame_dump`) |
 
 **`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
+
+**`unit_tests`** validates signal encoding and ECU unit behavior with mocks.
+
+**`integration_tests`** validates ECU component integration (multi-tick, run-loop, timer) without SocketCAN.
+
+**`python_integration`** is a unified target that builds `frame_dump` and runs pytest against `tests/integration/test_frames.py`.
+
+For detailed test documentation, see [Testing](../testing.md).
 
 ## Key Design Decisions
 

@@ -86,7 +86,7 @@ vcan-sim/
 │   │
 │   ├── platform/
 │   │   └── linux/                      # Linux-specific implementations
-│   │       ├── timer.h / .cpp          # Linux timer (std::this_thread::sleep_for)
+│   │       ├── timer.h / .cpp          # Linux timer
 │   │       └── socketcan/              # Linux SocketCAN driver
 │   │           ├── driver.h
 │   │           └── driver.cpp
@@ -104,16 +104,9 @@ vcan-sim/
 │       └── can_monitor.py              # Live decoder + CSV logger
 │
 ├── tests/
-│   ├── mocks/                          # Test doubles (no hardware dependency)
-│   │   ├── mock_can_driver.h
-│   │   ├── mock_timer.h
-│   │   └── mock_sensor.h
-│   ├── unit/                           # GoogleTest
-│   │   ├── test_signal_encoding.cpp    
-│   │   ├── test_motor_ecu.cpp          
-│   │   └── test_abs_ecu.cpp            
-│   └── integration/
-│       └── test_frames.py              # Python integration tests
+│   ├── mocks/                          # Test doubles
+│   ├── unit/                           # GoogleTest unit tests
+│   └── integration/                    # GoogleTest and Python integration tests
 │
 ├── dbc/
 │   └── vcansim.dbc                     # Signal definitions
@@ -124,7 +117,7 @@ vcan-sim/
 │   └── signal-encoding.md
 │
 ├── scripts/
-│   └── setup_vcan.sh                   # One-shot vcan0 setup
+│   └── setup_vcan.sh                   # vcan0 setup script
 │
 └── CMakeLists.txt
 ```
@@ -135,26 +128,43 @@ vcan-sim/
 
 - Linux with GCC and CMake
 - `libgtest-dev`
-
+- Python 3
 ### Install Dependencies
 
+**System packages:**
 ```bash
-sudo apt install -y cmake g++ libgtest-dev
+sudo apt install -y cmake g++ libgtest-dev python3-venv
 ```
+
+**Python dependencies (for integration tests):**
+Create a venv and install packages from `requirements.txt`:
+```bash
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+```
+
+This installs:
+- `cantools` — DBC parsing and frame decoding
+- `pytest` — test runner
+- `python-can` — CAN utilities (optional for live monitoring)
 
 ### Build
 
 ```bash
 mkdir build && cd build
 cmake ..
+cmake --build . -j2
 ```
 
-### Run Unit Tests
+This configures and builds the project.
+
+### Run All Tests
 
 ```bash
-make unit_tests
 ctest --verbose
 ```
+
+See [Testing](docs/testing.md) for detailed test documentation and individual execution.
 
 ## License
 
