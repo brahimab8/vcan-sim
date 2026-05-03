@@ -1,0 +1,3 @@
+cantools
+pytest
+python-can
