@@ -79,3 +79,49 @@ target_link_libraries(integration_tests PRIVATE
 )
 
 add_test(NAME integration_tests COMMAND integration_tests)
+
+# -----------------------------------------------------------------------------
+# frame_dump: emits deterministic ECU frames for Python DBC integration tests
+# -----------------------------------------------------------------------------
+add_executable(frame_dump
+    tests/integration/utils/frame_dump_main.cpp
+)
+target_include_directories(frame_dump PRIVATE
+    tests/mocks
+)
+target_link_libraries(frame_dump PRIVATE
+    can_common
+    can_ecu
+)
+
+# -----------------------------------------------------------------------------
+# python_integration_tests: optional CTest gate for DBC decoding checks
+# Uses project venv only: ${CMAKE_SOURCE_DIR}/venv/bin/python
+# Also provides a single build target: python_integration
+# -----------------------------------------------------------------------------
+set(VCANSIM_PYTHON_EXECUTABLE "${CMAKE_SOURCE_DIR}/venv/bin/python")
+
+if(EXISTS "${VCANSIM_PYTHON_EXECUTABLE}")
+    execute_process(
+        COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -c "import importlib.util; ok=importlib.util.find_spec('pytest') and importlib.util.find_spec('cantools'); print('1' if ok else '0')"
+        OUTPUT_VARIABLE VCANSIM_PY_INTEGRATION_READY
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+
+    if(VCANSIM_PY_INTEGRATION_READY STREQUAL "1")
+        # Register Python integration test with CTest. The test will run pytest
+        # and uses the built `frame_dump` binary via the VCANSIM_FRAME_DUMP_BIN env var.
+        add_test(
+            NAME python_integration_tests
+            COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -m pytest -q ${CMAKE_SOURCE_DIR}/tests/integration/test_frames.py
+        )
+        set_tests_properties(python_integration_tests PROPERTIES
+            ENVIRONMENT "VCANSIM_FRAME_DUMP_BIN=$<TARGET_FILE:frame_dump>"
+        )
+    else()
+        message(STATUS "Skipping python_integration_tests: pytest and/or cantools not found in ${VCANSIM_PYTHON_EXECUTABLE}")
+    endif()
+else()
+    message(STATUS "Skipping python_integration_tests: venv not found at ${VCANSIM_PYTHON_EXECUTABLE}")
+endif()
