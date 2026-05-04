@@ -36,6 +36,47 @@ target_link_libraries(can_ecu PUBLIC
 )
 
 # -----------------------------------------------------------------------------
+# can_platform: Linux platform layer (SocketCAN + timer)
+# Depends on can_common interfaces
+# -----------------------------------------------------------------------------
+add_library(can_platform STATIC
+    src/platform/linux/timer.cpp
+    src/platform/linux/socketcan/driver.cpp
+)
+target_include_directories(can_platform PUBLIC
+    src/platform/linux
+    src/platform/linux/socketcan
+)
+target_link_libraries(can_platform PUBLIC
+    can_common
+)
+
+# -----------------------------------------------------------------------------
+# Runner executables: live ECU processes for Linux/vcan0
+# -----------------------------------------------------------------------------
+add_executable(motor_ecu
+    src/platform/linux/runner/motor_ecu_main.cpp
+)
+target_include_directories(motor_ecu PRIVATE
+    src/sim
+)
+target_link_libraries(motor_ecu PRIVATE
+    can_ecu
+    can_platform
+)
+
+add_executable(abs_ecu
+    src/platform/linux/runner/abs_ecu_main.cpp
+)
+target_include_directories(abs_ecu PRIVATE
+    src/sim
+)
+target_link_libraries(abs_ecu PRIVATE
+    can_ecu
+    can_platform
+)
+
+# -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
 # Links against can_common and can_ecu  (no platform dependency)
 # -----------------------------------------------------------------------------
@@ -103,12 +144,13 @@ set(VCANSIM_PYTHON_EXECUTABLE "${CMAKE_SOURCE_DIR}/venv/bin/python")
 
 if(EXISTS "${VCANSIM_PYTHON_EXECUTABLE}")
     execute_process(
-        COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -c "import importlib.util; ok=importlib.util.find_spec('pytest') and importlib.util.find_spec('cantools'); print('1' if ok else '0')"
+        COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -c
+            "import importlib.util; print('1' if all(importlib.util.find_spec(x) for x in ('pytest', 'cantools')) else '0')"
         OUTPUT_VARIABLE VCANSIM_PY_INTEGRATION_READY
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
-
+    
     if(VCANSIM_PY_INTEGRATION_READY STREQUAL "1")
         # Register Python integration test with CTest. The test will run pytest
         # and uses the built `frame_dump` binary via the VCANSIM_FRAME_DUMP_BIN env var.
