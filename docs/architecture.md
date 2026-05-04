@@ -8,10 +8,12 @@ VcanSim is structured in four layers. Each layer has a single responsibility and
 
 | Layer | Path | Language | Responsibility |
 |---|---|---|---|
-| ECU Layer | `src/ecu/` | C++ | What each ECU sends and when |
-| Driver Layer | `src/platform/linux/` | C++ | Linux-specific CAN driver, timer implementation, and ECU runner entry points |
+| ECU Layer | `src/ecu/` | C++ | ECU behavior and frame emission logic |
+| Driver Layer | `src/platform/linux/socketcan/`, `src/platform/linux/`, `src/platform/linux/runner/` | C++ | Linux SocketCAN driver, Linux timer, and runner entry points |
 | Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, signal encoding, and abstract ECU base class |
-| Monitoring | `src/monitor/` | Python | DBC decoding, CSV logging. Integration tests validate ECU behavior against DBC expectations. |
+| Monitoring | `tools/` | Python | Live DBC decoding and CSV logging (`can_monitor.py`) |
+
+Simulation data sources used by the runners are provided in `src/sim/` (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`).
 
 The class diagram below describes the ECU responsibilities and dependencies. In the runnable system, the Motor and ABS ECUs are started by separate runner executables, so they execute as independent processes.
 
@@ -198,7 +200,6 @@ CMake is used with distinct targets per layer:
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
 | `integration_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
-| `python_integration` | Custom target | (depends on `frame_dump`) |
 
 **`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
@@ -208,7 +209,9 @@ CMake is used with distinct targets per layer:
 
 **`python_integration`** is a unified target that builds `frame_dump` and runs pytest against `tests/integration/test_frames.py`.
 
-For detailed test documentation, see [Testing](../testing.md).
+For live runtime orchestration, `scripts/run_vcan_demo.sh` launches the Linux `vcan0` simulation flow and collects monitor artifacts.
+
+For detailed validation and CI behavior, see [Testing](testing.md).
 
 ## Key Design Decisions
 

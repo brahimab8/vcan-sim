@@ -99,9 +99,9 @@ vcan-sim/
 │   │   ├── rpm_sensor.h
 │   │   ├── temp_sensor.h
 │   │   └── wheel_sensor.h
-│   │
-│   └── monitor/
-│       └── can_monitor.py              # Live decoder + CSV logger
+│
+├── tools/
+│   └── can_monitor.py                  # Live decoder + CSV logger
 │
 ├── tests/
 │   ├── mocks/                          # Test doubles
@@ -114,10 +114,13 @@ vcan-sim/
 ├── docs/
 │   ├── requirements.md
 │   ├── architecture.md
+│   ├── testing.md
 │   └── signal-encoding.md
 │
 ├── scripts/
-│   └── setup_vcan.sh                   # vcan0 setup script
+│   └── run_vcan_demo.sh                # Orchestrates live vcan0 demo
+│
+├── data/                               # Demo outputs (CSV/log) generated at runtime
 │
 └── CMakeLists.txt
 ```
@@ -136,7 +139,7 @@ vcan-sim/
 sudo apt install -y cmake g++ libgtest-dev python3-venv
 ```
 
-**Python dependencies (for integration tests):**
+**Python dependencies:**
 Create a venv and install packages from `requirements.txt`:
 ```bash
 python3 -m venv venv
@@ -165,6 +168,22 @@ ctest --verbose
 ```
 
 See [Testing](docs/testing.md) for detailed test documentation and individual execution.
+
+### Run Live Simulation (Linux)
+
+This runs the live runtime simulation path: create `vcan0`, start both ECU processes, run monitor, and collect outputs.
+
+```bash
+cmake --build build -j2
+bash scripts/run_vcan_demo.sh
+```
+
+Generated artifacts:
+- `data/decoded_signals.csv`
+- `data/monitor.log`
+
+Note: these files are generated locally in `data/`, and CI runs the same simulation flow on `ubuntu-latest` and uploads the results as workflow artifacts.
+
 
 ## License
 
