@@ -33,3 +33,16 @@ jobs:
 
       - name: Run all tests
         run: cd build && ctest --verbose --output-on-failure
+
+      - name: Run live ECU demo on vcan0
+        run: bash scripts/run_vcan_demo.sh
+
+      - name: Upload demo artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-logs
+          path: |
+            data/decoded_signals.csv
+            data/monitor.log
+          if-no-files-found: warn
