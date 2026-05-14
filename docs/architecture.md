@@ -200,6 +200,7 @@ CMake is used with distinct targets per layer:
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
 | `integration_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
+| `frame_dump` | Executable | `can_common`, `can_ecu` |
 
 **`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 

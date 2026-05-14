@@ -182,9 +182,6 @@ Generated artifacts:
 - `data/decoded_signals.csv`
 - `data/monitor.log`
 
-Note: these files are generated locally in `data/`, and CI runs the same simulation flow on `ubuntu-latest` and uploads the results as workflow artifacts.
-
-
 ## License
 
 MIT
