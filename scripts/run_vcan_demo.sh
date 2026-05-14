@@ -69,23 +69,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Step 0: Check vcan availability
-echo "[setup] Checking vcan (SocketCAN) kernel module availability..."
-
-# vcan is not available on systems without SocketCAN support.
-# -n Checks whether module exists WITHOUT loading it.
-if ! modprobe -n vcan 2>/dev/null; then
+# Step 0: Check vcan availability and load module
+echo "[setup] Loading vcan kernel module..."
+if ! sudo modprobe vcan 2>/dev/null; then
     echo "[setup] vcan kernel module not available on this system."
     exit 2
 fi
 
 # Step 1: Set up vcan0
-echo "[setup] Loading vcan kernel module..."
-if ! sudo -n modprobe vcan 2>/dev/null; then
-    echo "[setup] Attempting with sudo (may prompt for password)..."
-    sudo modprobe vcan || die "Failed to load vcan module"
-fi
-
 echo "[setup] Creating/bringing up ${VCAN_INTERFACE}..."
 sudo ip link add dev "${VCAN_INTERFACE}" type vcan || true  # Ignore if already exists
 sudo ip link set up "${VCAN_INTERFACE}" || die "Failed to bring up ${VCAN_INTERFACE}"
