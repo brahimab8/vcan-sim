@@ -1,16 +1,16 @@
 #!/bin/bash
 # run_vcan_demo.sh: Orchestrate Motor and ABS ECU demo on vcan0 with live monitoring
-# 
+#
 # Usage: bash scripts/run_vcan_demo.sh
 #
 # This script:
 # 1. Checks for vcan kernel support (aborts if unavailable)
 # 2. Sets up vcan0 interface
 # 3. Starts motor_ecu and abs_ecu in background
-# 4. Runs can_monitor.py to collect decoded frames into CSV and log
+# 4. Runs can_monitor.py to collect decoded frames into per-message CSVs and log
 # 5. Stops ECU processes cleanly
 # 6. Collects artifacts into data/ folder
-# 
+#
 # Exit codes:
 #   0 = success
 #   1 = error (missing binary, failed setup, etc.)
@@ -43,10 +43,10 @@ DBC_FILE="${REPO_ROOT}/dbc/vcansim.dbc"
 PYTHON_VENV="${REPO_ROOT}/venv"
 MONITOR_SCRIPT="${REPO_ROOT}/tools/can_monitor.py"
 
-# Output paths (use data/ folder, not build/)
+# Output paths
 DATA_DIR="${REPO_ROOT}/data"
+CSV_DIR="${DATA_DIR}/csv"
 MONITOR_LOG="${DATA_DIR}/monitor.log"
-CSV_FILE="${DATA_DIR}/decoded_signals.csv"
 
 # Helper function: error exit
 die() {
@@ -82,9 +82,9 @@ sudo ip link add dev "${VCAN_INTERFACE}" type vcan || true  # Ignore if already 
 sudo ip link set up "${VCAN_INTERFACE}" || die "Failed to bring up ${VCAN_INTERFACE}"
 echo "[setup] ${VCAN_INTERFACE} is ready"
 
-# Step 2: Create data directory
+# Step 2: Create output directories
 #-p: no error if already exists
-mkdir -p "${DATA_DIR}"
+mkdir -p "${CSV_DIR}"   # data/csv/ holds one file per message
 
 # Step 3: Verify binaries exist
 # -f checks if file exists
@@ -109,7 +109,7 @@ echo "[demo] abs_ecu started (PID $ABS_PID)"
 sleep 0.5
 
 # Step 5: Run monitor for the specified duration, collect CSV and logs
-echo "[demo] Running monitor for ${DEMO_DURATION_SECONDS}s, writing to ${DATA_DIR}..."
+echo "[demo] Running monitor for ${DEMO_DURATION_SECONDS}s, writing CSVs to ${CSV_DIR}/..."
 
 # Determine python executable
 PYTHON_BIN="${PYTHON_VENV}/bin/python"
@@ -121,22 +121,31 @@ fi
 timeout "${DEMO_DURATION_SECONDS}" "${PYTHON_BIN}" "${MONITOR_SCRIPT}" \
     --interface "${VCAN_INTERFACE}" \
     --dbc "${DBC_FILE}" \
-    --csv "${CSV_FILE}" \
+    --csv-dir  "${CSV_DIR}" \
     >"${MONITOR_LOG}" 2>&1 || true  # timeout returns 124 on expiration; || true prevents set -e from aborting
 
-echo "[demo] Monitor finished. Artifacts in ${DATA_DIR}:"
-echo "  CSV: ${CSV_FILE}"
-echo "  Log: ${MONITOR_LOG}"
+echo "[demo] Monitor finished."
 
 # Step 6: Let processes finish gracefully
 echo "[demo] Waiting for ECU processes to finish..."
 sleep 1
 
-# Verify artifacts were created
-if [[ -f "${CSV_FILE}" ]]; then
-    echo "[demo] ✓ CSV file created ($(wc -l < "${CSV_FILE}") lines)"
+# Report artifacts
+echo "[demo] Artifacts in ${DATA_DIR}:"
+echo "  Log: ${MONITOR_LOG}"
+
+CSV_COUNT=0
+# Check for CSV files and count lines for each
+# compgen -G checks for files matching the pattern; if none, it returns non-zero
+if compgen -G "${CSV_DIR}/*.csv" > /dev/null 2>&1; then
+    for csv_file in "${CSV_DIR}"/*.csv; do
+        line_count=$(wc -l < "${csv_file}")
+        echo "  CSV: ${csv_file} (${line_count} lines)"
+        (( CSV_COUNT++ )) || true
+    done
+    echo "[demo] ✓ ${CSV_COUNT} CSV file(s) created"
 else
-    echo "[demo] ⚠ CSV file not created (check monitor output)"
+    echo "[demo] ⚠ No CSV files found in ${CSV_DIR} (check monitor log)"
 fi
 
 if [[ -f "${MONITOR_LOG}" ]]; then
