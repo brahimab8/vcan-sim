@@ -68,7 +68,7 @@ graph TD
 
 **DBC file:** an industry-standard file format that defines CAN message IDs, signal names, scaling, offset, and units. Used by tools like CANalyzer and cantools.
 
-**CSV Log:** the output of the monitor script, one row per decoded frame with timestamp and signal values.
+**CSV Logs:** the output of the monitor script, one file per message type, with one row per decoded frame.
 
 ## Project Structure
 
@@ -178,9 +178,38 @@ cmake --build build -j2
 bash scripts/run_vcan_demo.sh
 ```
 
-Generated artifacts:
-- `data/decoded_signals.csv`
+- `data/csv/*.csv`
 - `data/monitor.log`
+
+### Example Output
+
+The runtime output lives in `data/`, with per-message CSV files under `data/csv/` and a log file (`monitor.log`) capturing decoded CAN frames and runtime activity.
+
+
+#### `MotorStatus.csv`
+
+| timestamp (Unix s) | frame_id | RPM | Temperature |
+| --- | --- | --- | --- |
+| 1778796278.237407 | 0x100 | 2500.0 | 88 |
+| 1778796278.537598 | 0x100 | 2000.0 | 70 |
+
+Note: Monitor timestamps are stored as Unix seconds. Consumers should convert them to human-readable format.
+
+#### `ABSStatus.csv`
+
+| timestamp (Unix s) | frame_id | Wheel_FL | Wheel_FR | Wheel_RL | Wheel_RR |
+| --- | --- | --- | --- | --- | --- |
+| 1778796278.242311 | 0x200 | 60.0 | 60.5 | 59.5 | 59.800000000000004 |
+| 1778796278.643438 | 0x200 | 40.0 | 40.1 | 39.900000000000006 | 39.800000000000004 |
+
+#### `monitor.log`
+
+```text
+monitoring vcan0 using DBC: dbc/vcansim.dbc
+writing CSVs to: data/csv/
+1778796278.237407 id=0x100 dlc=3 msg=MotorStatus signals={'RPM': 2500.0, 'Temperature': 88}
+1778796278.242311 id=0x200 dlc=8 msg=ABSStatus signals={'Wheel_FL': 60.0, 'Wheel_FR': 60.5, 'Wheel_RL': 59.5, 'Wheel_RR': 59.800000000000004}
+```
 
 ## License
 
