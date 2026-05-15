@@ -78,9 +78,13 @@ If Python venv or dependencies are missing, `ctest` will still run C++ tests; Py
 
 `tests/mocks/` contains `MockCanDriver`, `MockTimer`, and `MockSensor<T>` used to keep tests deterministic and free of OS/hardware.
 
-## CI and Live Demo Validation
+## CI / GitHub Actions
 
 CI validates three test tiers via `ctest` (unit, C++ integration, Python DBC integration).
+
+GitHub Actions runs all three test tiers automatically on push. See `.github/workflows/ci.yml`.
+
+## Live Demo Validation
 
 The live demo requires a native Linux host with vcan kernel support (not available on CI or WSL). Run it locally:
 
@@ -89,7 +93,7 @@ cmake --build build -j2
 bash scripts/run_vcan_demo.sh
 ```
 
-Generated artifacts land in `data/`.
+Generated artifacts land in `data/csv/` and `data/monitor.log`.
 
 ---
 
