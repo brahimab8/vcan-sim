@@ -4,20 +4,24 @@ This document describes the architectural layers, class design, key design decis
 
 ## Layers
 
-VcanSim is structured in four layers. Each layer has a single responsibility and a clearly defined boundary.
+VcanSim is structured in five layers. Each layer has a single responsibility and a clearly defined boundary.
 
 | Layer | Path | Language | Responsibility |
 |---|---|---|---|
-| ECU Layer | `src/ecu/` | C++ | ECU behavior and frame emission logic |
+| ECU Layer | `src/ecu/` | C++ | ECU behavior, frame emission, and command reception logic |
 | Driver Layer | `src/platform/linux/socketcan/`, `src/platform/linux/`, `src/platform/linux/runner/` | C++ | Linux SocketCAN driver, Linux timer, and runner entry points |
-| Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, signal encoding, and abstract ECU base class |
-| Monitoring | `tools/` | Python | Live DBC decoding and CSV logging (`can_monitor.py`) |
+| Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, and abstract ECU base class |
+| DBC Layer | `src/dbc/` | C (generated) | DBC-generated signal pack/unpack/encode/decode functions, shared by ECUs and monitor |
+| Monitoring | `tools/monitor/` | C++ | Live CAN frame decoding and CSV logging using DBC-generated code |
+| GUI | `tools/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input |
 
 Simulation data sources used by the runners are provided in `src/sim/` (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`).
 
 The class diagram below describes the ECU responsibilities and dependencies. In the runnable system, the Motor and ABS ECUs are started by separate runner executables, so they execute as independent processes.
 
 ## Class Diagram
+
+### ECU Layer
 
 ```mermaid
 classDiagram
@@ -69,9 +73,11 @@ classDiagram
     class MotorEcu {
         -RpmSensor& rpm_sensor
         -TempSensor& temp_sensor
+        -uint16_t target_rpm
         +MotorEcu(ICanDriver&, ITimer&, RpmSensor&, TempSensor&)
         +run() void
         +tick() void
+        -handleCommand(CanFrame) void
     }
 
     class AbsEcu {
@@ -91,7 +97,7 @@ classDiagram
     RpmSensor --|> ISensor
     TempSensor --|> ISensor
     WheelSensor --|> ISensor
-    
+
     BaseEcu <|-- MotorEcu
     BaseEcu <|-- AbsEcu
     BaseEcu ..> ICanDriver
@@ -101,14 +107,45 @@ classDiagram
     AbsEcu ..> WheelSensor
 ```
 
+### Monitoring and GUI Layer
+
+> ECU processes communicate with the monitoring layer exclusively through
+> the `vcan0` virtual CAN bus.
+
+```mermaid
+classDiagram
+
+    class CanMonitor {
+        -int socket_fd
+        -bool running
+        +CanMonitor(string interface)
+        +run() void
+        +stop() void
+        -decodeFrame(CanFrame) void
+        -writeCsv(string msg, map signals) void
+    }
+
+    class CanWorker {
+        -CanMonitor monitor
+        +run() void
+        +stop() void
+        +signalReceived(string msg, map signals)$ void
+    }
+
+    class MainWindow {
+        -CanWorker worker
+        +MainWindow()
+        +updateSignals(string msg, map signals) void
+        -sendTargetRpm(uint16_t rpm) void
+    }
+
+    CanWorker --> CanMonitor
+    CanWorker ..> MainWindow : Qt signal/slot
+```
+
 ## Signal Encoding
 
-Signal encoding is handled by the `SignalEncoder` namespace in `src/common/signal_encoder.h`.
-It provides primitive byte-level operations only: `encodeUint16LE`, `encodeUint8`, `decodeUint16LE`, `decodeUint8`.
-Each ECU class applies its own scaling and offset before calling these primitives.
-All functions return `bool` and perform bounds checking internally.
-
-Both `MotorEcu` and `AbsEcu` depend on `SignalEncoder` for frame payload construction.
+Signal encoding and decoding use DBC-generated code produced at build time by `cantools generate_c_source`. Both ECUs and the monitor link against the same `can_dbc` static library, ensuring the DBC file is the single source of truth for all signal definitions. See [Signal Encoding](signal-encoding.md) for full details.
 
 ## ICanDriver Interface
 
@@ -185,7 +222,7 @@ AbsEcu::AbsEcu(ICanDriver& driver, ITimer& timer,
                                rear_left_(rl), rear_right_(rr) {}
 ```
 
-For simulation-oriented builds, `src/sim/` provides header-only implementations (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`) 
+For simulation-oriented builds, `src/sim/` provides header-only implementations (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`).
 
 ## Build System
 
@@ -193,14 +230,19 @@ CMake is used with distinct targets per layer:
 
 | Target | Type | Links Against |
 |---|---|---|
-| `can_common` | Static library | |
-| `can_ecu` | Static library | `can_common` |
+| `can_dbc` | Static library | — |
+| `can_common` | Static library | — |
+| `can_ecu` | Static library | `can_common`, `can_dbc` |
 | `can_platform` | Static library | `can_common` |
 | `motor_ecu` | Executable | `can_ecu`, `can_platform` |
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
-| `unit_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
-| `integration_tests` | Executable | `can_common`, `can_ecu`, GoogleTest |
+| `can_monitor` | Executable | `can_common`, `can_dbc`, `can_platform` |
+| `vcan_ui` | Executable | `can_common`, `can_dbc`, Qt Widgets |
+| `unit_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |
+| `integration_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |
 | `frame_dump` | Executable | `can_common`, `can_ecu` |
+
+`can_dbc` is produced from `src/dbc/vcansim.c`, which is generated at configure time by a CMake custom command invoking `cantools generate_c_source`. The generated files are not tracked in version control.
 
 **`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
@@ -218,15 +260,14 @@ For detailed validation and CI behavior, see [Testing](testing.md).
 
 | Decision | Rationale |
 |---|---|
-| C++ for ECUs and drivers | Primary language in German embedded market |
-| Python for monitor and tests | Established role: tooling and test automation, not production code |
-| Manual signal encoding in C++ | Demonstrates bit-level understanding of CAN frames |
-| `cantools` for Python decoding | Industry-standard tool used in real automotive projects |
+| Python for test automation | pytest validates the DBC file and codegen pipeline as a regression check; core signal correctness is covered by C++ unit and integration tests |
+| `can_dbc` shared static library | Generated code compiled once, linked by ECUs, monitor, and GUI |
+| Dedicated CAN receive thread in GUI (`CanWorker`) | Keeps the UI thread responsive; `CanWorker` emits Qt signals to `MainWindow` via queued connection, avoiding any direct cross-thread UI access |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
 | `ITimer` interface | Decouples ECU loop timing from OS-specific sleep |
 | `ISensor<T>` template interface | Decouples ECU logic from sensor implementations. Each ECU injects the specific sensors it needs. Enables simulation (header-only `Sim*Sensor` classes) and future hardware integration. |
 | `BaseEcu` abstract class | Shared lifecycle, driver and timer reference, avoids duplication across ECUs |
-| `bool` return for driver and encoder | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
+| `bool` return for driver | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
 | Single-threaded ECU design | Each ECU runs a blocking loop controlled by `run()` and `stop()`. No internal threading. Each ECU is launched as an independent process. |
 | No dynamic memory for frame data | Fixed-size frame payload: `std::array` on stack, no heap allocation |
 | `vcan` over simulation framework | Real Linux kernel CAN stack, not a mock |
