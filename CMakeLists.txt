@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(vcan_sim VERSION 0.1.0 LANGUAGES CXX)
+project(vcan_sim LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,16 +8,54 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 # -----------------------------------------------------------------------------
+# can_dbc: DBC-generated signal codec (auto-generated at configure time)
+# Generated from dbc/vcansim.dbc using cantools generate_c_source
+# -----------------------------------------------------------------------------
+set(DBC_FILE "${CMAKE_SOURCE_DIR}/dbc/vcansim.dbc")
+set(DBC_OUT_DIR "${CMAKE_SOURCE_DIR}/src/dbc")
+set(DBC_GENERATED_H "${DBC_OUT_DIR}/vcansim.h")
+set(DBC_GENERATED_C "${DBC_OUT_DIR}/vcansim.c")
+set(VCANSIM_PYTHON_EXECUTABLE "${CMAKE_SOURCE_DIR}/venv/bin/python")
+
+add_custom_command(
+    OUTPUT "${DBC_GENERATED_H}" "${DBC_GENERATED_C}"
+    COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -m cantools generate_c_source
+        --use-float
+        --output-directory "${DBC_OUT_DIR}"
+        "${DBC_FILE}"
+    DEPENDS "${DBC_FILE}"
+    COMMENT "Generating CAN signal codec from vcansim.dbc"
+)
+
+add_custom_target(generate_can_dbc
+    DEPENDS "${DBC_GENERATED_H}" "${DBC_GENERATED_C}"
+)
+
+add_library(can_dbc STATIC "${DBC_GENERATED_C}")
+set_target_properties(can_dbc PROPERTIES LINKER_LANGUAGE C)
+target_include_directories(can_dbc PUBLIC "${DBC_OUT_DIR}")
+add_dependencies(can_dbc generate_can_dbc)
+
+
+# -----------------------------------------------------------------------------
 # can_common: platform-independent core
 # No OS-specific or SocketCAN dependency, fully unit-testable in isolation
 # -----------------------------------------------------------------------------
 add_library(can_common STATIC
-    src/common/signal_encoder.cpp
     src/common/base_ecu.cpp
 )
 target_include_directories(can_common PUBLIC
     src/common
 )
+
+# -----------------------------------------------------------------------------
+# can_sim: simulation utilities
+# -----------------------------------------------------------------------------
+add_library(can_sim STATIC
+    src/sim/rpm_sensor.cpp
+)
+target_include_directories(can_sim PUBLIC src/sim)
+target_link_libraries(can_sim PUBLIC can_common)
 
 # -----------------------------------------------------------------------------
 # can_ecu: ECU simulators
@@ -33,6 +71,7 @@ target_include_directories(can_ecu PUBLIC
 )
 target_link_libraries(can_ecu PUBLIC
     can_common
+    can_dbc
 )
 
 # -----------------------------------------------------------------------------
@@ -57,12 +96,10 @@ target_link_libraries(can_platform PUBLIC
 add_executable(motor_ecu
     src/platform/linux/runner/motor_ecu_main.cpp
 )
-target_include_directories(motor_ecu PRIVATE
-    src/sim
-)
 target_link_libraries(motor_ecu PRIVATE
     can_ecu
     can_platform
+    can_sim
 )
 
 add_executable(abs_ecu
@@ -84,7 +121,6 @@ find_package(GTest REQUIRED)
 enable_testing()
 
 add_executable(unit_tests
-    tests/unit/test_signal_encoding.cpp
     tests/unit/test_motor_ecu.cpp
     tests/unit/test_abs_ecu.cpp
 )
@@ -92,6 +128,7 @@ target_include_directories(unit_tests PRIVATE
     tests/mocks
 )
 target_link_libraries(unit_tests PRIVATE
+    can_dbc
     can_common
     can_ecu
     GTest::GTest
@@ -115,6 +152,7 @@ target_include_directories(integration_tests PRIVATE
 target_link_libraries(integration_tests PRIVATE
     can_common
     can_ecu
+    can_dbc
     GTest::GTest
     GTest::Main
 )
@@ -140,8 +178,6 @@ target_link_libraries(frame_dump PRIVATE
 # Uses project venv only: ${CMAKE_SOURCE_DIR}/venv/bin/python
 # Also provides a single build target: python_integration
 # -----------------------------------------------------------------------------
-set(VCANSIM_PYTHON_EXECUTABLE "${CMAKE_SOURCE_DIR}/venv/bin/python")
-
 if(EXISTS "${VCANSIM_PYTHON_EXECUTABLE}")
     execute_process(
         COMMAND "${VCANSIM_PYTHON_EXECUTABLE}" -c

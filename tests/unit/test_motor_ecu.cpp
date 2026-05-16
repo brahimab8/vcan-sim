@@ -4,7 +4,7 @@
 #include "mock_sensor.h"
 #include "mock_timer.h"
 #include "motor_ecu.h"
-#include "signal_encoder.h"
+#include "vcansim.h" // Generated from vcansim.dbc by cantools
 
 // ---------------------------------------------------------------------------
 // Helper: construct a MotorEcu with fresh mocks
@@ -16,44 +16,6 @@ struct MotorEcuFixture {
     MockSensor<int16_t>  temp_sensor{{20, 45}};
     MotorEcu      ecu{driver, timer, rpm_sensor, temp_sensor};
 };
-
-// ---------------------------------------------------------------------------
-// Scaling helpers: verifies the static scaling functions produce expected raw values
-// ---------------------------------------------------------------------------
-
-TEST(MotorEcuScaling, RpmToRaw_ZeroRpm)
-{
-    EXPECT_EQ(MotorEcu::rpmToRaw(0), 0U);
-}
-
-TEST(MotorEcuScaling, RpmToRaw_TypicalValue)
-{
-    EXPECT_EQ(MotorEcu::rpmToRaw(800), 1600U);
-}
-
-TEST(MotorEcuScaling, RpmToRaw_MaxValue)
-{
-    EXPECT_EQ(MotorEcu::rpmToRaw(8000), 16000U);
-}
-
-TEST(MotorEcuScaling, TempToRaw_MinValue)
-{
-    EXPECT_EQ(MotorEcu::tempToRaw(-40), 0U);   // offset -40 -> raw = 0
-}
-
-TEST(MotorEcuScaling, TempToRaw_TypicalValue)
-{
-    EXPECT_EQ(MotorEcu::tempToRaw(20), 60U);   // 20 + 40 = 60
-}
-
-TEST(MotorEcuScaling, TempToRaw_MaxValue)
-{
-    EXPECT_EQ(MotorEcu::tempToRaw(150), 190U); // 150 + 40 = 190
-}
-
-// ---------------------------------------------------------------------------
-// Frame structure: verifies tick() builds a correctly structured frame
-// ---------------------------------------------------------------------------
 
 TEST(MotorEcuTick, SendsExactlyOneFrame)
 {
@@ -68,7 +30,7 @@ TEST(MotorEcuTick, FrameHasCorrectCanId)
     MotorEcuFixture f;
     f.ecu.tick();
 
-    EXPECT_EQ(f.driver.sentFrames()[0].id, 0x100U);
+    EXPECT_EQ(f.driver.sentFrames()[0].id, VCANSIM_MOTOR_STATUS_FRAME_ID);
 }
 
 TEST(MotorEcuTick, FrameHasCorrectDlc)
@@ -76,22 +38,19 @@ TEST(MotorEcuTick, FrameHasCorrectDlc)
     MotorEcuFixture f;
     f.ecu.tick();
 
-    EXPECT_EQ(f.driver.sentFrames()[0].dlc, 3U);
+    EXPECT_EQ(f.driver.sentFrames()[0].dlc, VCANSIM_MOTOR_STATUS_LENGTH);
 }
-
-// ---------------------------------------------------------------------------
-// Signal values: verifies tick() encodes the injected sensor values correctly
-// SignalEncoder is used here as a trusted decode primitive (independently tested)
-// ---------------------------------------------------------------------------
 
 TEST(MotorEcuTick, FirstTickEncodesFirstRpmProfile)
 {
     MotorEcuFixture f;
     f.ecu.tick();
 
-    uint16_t raw = 0;
-    SignalEncoder::decodeUint16LE(f.driver.sentFrames()[0], 0, raw);
-    EXPECT_EQ(raw, MotorEcu::rpmToRaw(800));  // first injected sensor value
+    vcansim_motor_status_t msg{};
+    vcansim_motor_status_unpack(&msg, f.driver.sentFrames()[0].data.data(),
+                                f.driver.sentFrames()[0].dlc);
+
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg.rpm), 800.0f);
 }
 
 TEST(MotorEcuTick, FirstTickEncodesFirstTempProfile)
@@ -99,33 +58,28 @@ TEST(MotorEcuTick, FirstTickEncodesFirstTempProfile)
     MotorEcuFixture f;
     f.ecu.tick();
 
-    uint8_t raw = 0;
-    SignalEncoder::decodeUint8(f.driver.sentFrames()[0], 2, raw);
-    EXPECT_EQ(raw, MotorEcu::tempToRaw(20));  // first injected sensor value
-}
+    vcansim_motor_status_t msg{};
+    vcansim_motor_status_unpack(&msg, f.driver.sentFrames()[0].data.data(),
+                                f.driver.sentFrames()[0].dlc);
 
-// ---------------------------------------------------------------------------
-// Sensor input progression: verifies the ECU reads updated values on later ticks
-// ---------------------------------------------------------------------------
+    EXPECT_FLOAT_EQ(vcansim_motor_status_temperature_decode(msg.temperature), 20.0f);
+}
 
 TEST(MotorEcuTick, ReadsUpdatedSensorValuesOnEachTick)
 {
     MotorEcuFixture f;
-    f.ecu.tick();  // first injected sensor values
-    f.ecu.tick();  // second injected sensor values
+    f.ecu.tick();
+    f.ecu.tick();
 
-    uint16_t raw0 = 0;
-    uint16_t raw1 = 0;
-    SignalEncoder::decodeUint16LE(f.driver.sentFrames()[0], 0, raw0);
-    SignalEncoder::decodeUint16LE(f.driver.sentFrames()[1], 0, raw1);
+    vcansim_motor_status_t msg0{}, msg1{};
+    vcansim_motor_status_unpack(&msg0, f.driver.sentFrames()[0].data.data(),
+                                f.driver.sentFrames()[0].dlc);
+    vcansim_motor_status_unpack(&msg1, f.driver.sentFrames()[1].data.data(),
+                                f.driver.sentFrames()[1].dlc);
 
-    EXPECT_EQ(raw0, MotorEcu::rpmToRaw(800));
-    EXPECT_EQ(raw1, MotorEcu::rpmToRaw(1200));
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg0.rpm), 800.0f);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg1.rpm), 1200.0f);
 }
-
-// ---------------------------------------------------------------------------
-// Timer isolation: tick() must not call the timer
-// ---------------------------------------------------------------------------
 
 TEST(MotorEcuTick, DoesNotCallTimer)
 {

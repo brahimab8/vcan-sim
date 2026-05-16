@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "base_ecu.h"
-#include "signal_encoder.h"
 #include "motor_ecu.h"
+#include "vcansim.h"
 
 #include "mock_can_driver.h"
 #include "mock_sensor.h"
@@ -32,27 +32,18 @@ TEST(MotorEcuIntegration, EncodingOnTickSequence)
     // We expect three frames because we called tick() three times.
     ASSERT_EQ(driver.sentFrameCount(), 3U);
 
-    uint16_t rpm0 = 0, rpm1 = 0, rpm2 = 0;
-    uint8_t temp0 = 0, temp1 = 0, temp2 = 0;
+    vcansim_motor_status_t msg0{}, msg1{}, msg2{};
+    vcansim_motor_status_unpack(&msg0, driver.sentFrames()[0].data.data(), driver.sentFrames()[0].dlc);
+    vcansim_motor_status_unpack(&msg1, driver.sentFrames()[1].data.data(), driver.sentFrames()[1].dlc);
+    vcansim_motor_status_unpack(&msg2, driver.sentFrames()[2].data.data(), driver.sentFrames()[2].dlc);
 
-    // Decode RPM (uint16 LE) from offset 0 of each captured frame and
-    // temperature (uint8) from offset 2. These positions are defined by the
-    // DBC and by the MotorEcu implementation.
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[0], 0, rpm0);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[1], 0, rpm1);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[2], 0, rpm2);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg0.rpm),  800.0f);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg1.rpm), 1200.0f);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg2.rpm), 2000.0f);
 
-    SignalEncoder::decodeUint8(driver.sentFrames()[0], 2, temp0);
-    SignalEncoder::decodeUint8(driver.sentFrames()[1], 2, temp1);
-    SignalEncoder::decodeUint8(driver.sentFrames()[2], 2, temp2);
-
-    EXPECT_EQ(rpm0, MotorEcu::rpmToRaw(800));
-    EXPECT_EQ(rpm1, MotorEcu::rpmToRaw(1200));
-    EXPECT_EQ(rpm2, MotorEcu::rpmToRaw(2000));
-
-    EXPECT_EQ(temp0, MotorEcu::tempToRaw(20));
-    EXPECT_EQ(temp1, MotorEcu::tempToRaw(45));
-    EXPECT_EQ(temp2, MotorEcu::tempToRaw(90));
+    EXPECT_FLOAT_EQ(vcansim_motor_status_temperature_decode(msg0.temperature), 20.0f);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_temperature_decode(msg1.temperature), 45.0f);
+    EXPECT_FLOAT_EQ(vcansim_motor_status_temperature_decode(msg2.temperature), 90.0f);
 }
 
 TEST(MotorEcuIntegration, RunStopsAfterConfiguredCycles)

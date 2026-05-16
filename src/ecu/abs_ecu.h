@@ -22,20 +22,10 @@ public:
 
     // Run the cyclic transmit loop. Blocks until stop() is called
     void run() override;
-
-    // Encode and send one ABS frame immediately
-    // Called by run() each cycle. Also callable directly in unit tests
     void tick();
 
-    // Scaling helper (public for unit testing)
-    // speed in 0.1 km/h units (deci-km/h) -> raw uint16 value
-    static uint16_t speedToRaw(uint16_t speed_deci_kmh);
-
 private:
-    static constexpr uint32_t CAN_ID             = 0x200;
-    static constexpr uint8_t  FRAME_DLC          = 8;
-    static constexpr uint32_t CYCLE_MS           = 20;
-    static constexpr uint16_t MAX_WHEEL_RAW      = 3000; // DBC max 300.0 km/h
+    static constexpr uint32_t CYCLE_MS = 20;
 
     WheelSensor& front_left_sensor_;
     WheelSensor& front_right_sensor_;
