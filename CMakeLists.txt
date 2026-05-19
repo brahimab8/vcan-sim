@@ -48,14 +48,6 @@ target_include_directories(can_common PUBLIC
     src/common
 )
 
-# -----------------------------------------------------------------------------
-# can_sim: simulation utilities
-# -----------------------------------------------------------------------------
-add_library(can_sim STATIC
-    src/sim/rpm_sensor.cpp
-)
-target_include_directories(can_sim PUBLIC src/sim)
-target_link_libraries(can_sim PUBLIC can_common)
 
 # -----------------------------------------------------------------------------
 # can_ecu: ECU simulators
@@ -96,17 +88,21 @@ target_link_libraries(can_platform PUBLIC
 add_executable(motor_ecu
     src/platform/linux/runner/motor_ecu_main.cpp
 )
+target_include_directories(motor_ecu PRIVATE
+    src/platform/linux/sim
+    src/common
+)
 target_link_libraries(motor_ecu PRIVATE
     can_ecu
     can_platform
-    can_sim
 )
 
 add_executable(abs_ecu
     src/platform/linux/runner/abs_ecu_main.cpp
 )
 target_include_directories(abs_ecu PRIVATE
-    src/sim
+    src/platform/linux/sim
+    src/common
 )
 target_link_libraries(abs_ecu PRIVATE
     can_ecu

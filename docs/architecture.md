@@ -15,7 +15,7 @@ VcanSim is structured in five layers. Each layer has a single responsibility and
 | Monitoring | `tools/monitor/` | C++ | Live CAN frame decoding and CSV logging using DBC-generated code |
 | GUI | `tools/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input |
 
-Simulation data sources used by the runners are provided in `src/sim/` (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`).
+Simulation data sources used by the runners are provided in `src/platform/linux/` (`SimWheelSensor`, `SimEngine`).
 
 The class diagram below describes the ECU responsibilities and dependencies. In the runnable system, the Motor and ABS ECUs are started by separate runner executables, so they execute as independent processes.
 
@@ -54,9 +54,24 @@ classDiagram
         +sleepMs(uint32_t) void
     }
 
-    class ISensor~T~ {
+    class IRpmSensor {
         <<interface>>
-        +read() T
+        +readRpm() uint16_t
+    }
+
+    class ITempSensor {
+        <<interface>>
+        +readTemp() int16_t
+    }
+
+    class IWheelSensor {
+        <<interface>>
+        +readSpeed() uint16_t
+    }
+
+    class IMotorController {
+        <<interface>>
+        +setTargetRpm(uint16_t) void
     }
 
     class BaseEcu {
@@ -71,21 +86,21 @@ classDiagram
     }
 
     class MotorEcu {
-        -RpmSensor& rpm_sensor
-        -TempSensor& temp_sensor
-        -uint16_t target_rpm
-        +MotorEcu(ICanDriver&, ITimer&, RpmSensor&, TempSensor&)
+        -IRpmSensor& rpm_sensor
+        -ITempSensor& temp_sensor
+        -IMotorController& motor_controller
+        +MotorEcu(ICanDriver&, ITimer&, IRpmSensor&, ITempSensor&, IMotorController&)
         +run() void
         +tick() void
         -handleCommand(CanFrame) void
     }
 
     class AbsEcu {
-        -WheelSensor& front_left_sensor
-        -WheelSensor& front_right_sensor
-        -WheelSensor& rear_left_sensor
-        -WheelSensor& rear_right_sensor
-        +AbsEcu(ICanDriver&, ITimer&, WheelSensor& x4)
+        -IWheelSensor& front_left_sensor
+        -IWheelSensor& front_right_sensor
+        -IWheelSensor& rear_left_sensor
+        -IWheelSensor& rear_right_sensor
+        +AbsEcu(ICanDriver&, ITimer&, IWheelSensor& x4)
         +run() void
         +tick() void
     }
@@ -94,17 +109,15 @@ classDiagram
     ICanDriver <|-- SocketCanDriver
     ITimer <|-- LinuxTimer
 
-    RpmSensor --|> ISensor
-    TempSensor --|> ISensor
-    WheelSensor --|> ISensor
-
     BaseEcu <|-- MotorEcu
     BaseEcu <|-- AbsEcu
     BaseEcu ..> ICanDriver
     BaseEcu ..> ITimer
-    MotorEcu ..> RpmSensor
-    MotorEcu ..> TempSensor
-    AbsEcu ..> WheelSensor
+    MotorEcu ..> IRpmSensor
+    MotorEcu ..> ITempSensor
+    MotorEcu ..> IMotorController
+    AbsEcu ..> IWheelSensor
+
 ```
 
 ### Monitoring and GUI Layer
@@ -180,49 +193,81 @@ Usage:
 ```cpp
 LinuxTimer      timer;
 SocketCanDriver driver("vcan0");  // both must outlive motor
-MotorEcu        motor(driver, timer);
+SimEngine       engine; 
+MotorEcu        motor(driver, timer, engine, engine, engine);
 motor.run();
 ```
 
 In the deployed runtime, this construction happens inside a dedicated ECU runner entry point, one per ECU process.
 
-## ISensor Interface
+## Sensor Interfaces
 
-`ISensor<T>` is a template interface that decouples ECU logic from sensor implementations.
-Each ECU injects the sensors it depends on via constructor parameters.
+Named sensor interfaces decouple ECU logic from sensor implementations.
+Each ECU injects the specific interfaces it needs via constructor parameters.
+Separate named interfaces (rather than a generic `ISensor<T>` template) are used
+to allow one class to implement multiple sensor types without method name conflicts.
 
 ```cpp
-// src/common/isensor.h
-template <typename T>
-class ISensor {
+// src/common/isensors.h
+class IRpmSensor {
 public:
-    virtual ~ISensor() = default;
-    virtual T read() noexcept = 0;
+    virtual ~IRpmSensor() = default;
+    virtual uint16_t readRpm() noexcept = 0;
 };
 
-// Type aliases for concreteness
-using RpmSensor    = ISensor<uint16_t>;  // RPM values
-using TempSensor   = ISensor<int16_t>;   // Temperature in °C
-using WheelSensor  = ISensor<uint16_t>;  // Wheel speed in deci-km/h
+class ITempSensor {
+public:
+    virtual ~ITempSensor() = default;
+    virtual int16_t readTemp() noexcept = 0;
+};
+
+class IWheelSensor {
+public:
+    virtual ~IWheelSensor() = default;
+    virtual uint16_t readSpeed() noexcept = 0;
+};
 ```
 
-**MotorEcu** injects RPM and temperature sensors:
+**MotorEcu** injects RPM, temperature, and motor controller:
 ```cpp
-MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer, 
-                   RpmSensor& rpm, TempSensor& temp)
-    : BaseEcu(driver, timer), rpm_sensor_(rpm), temp_sensor_(temp) {}
+MotorEcu::MotorEcu(ICanDriver& driver, ITimer& timer,
+                   IRpmSensor& rpm, ITempSensor& temp,
+                   IMotorController& controller)
+    : BaseEcu(driver, timer), rpm_sensor_(rpm),
+      temp_sensor_(temp), motor_controller_(controller) {}
 ```
 
 **AbsEcu** injects four wheel speed sensors:
 ```cpp
 AbsEcu::AbsEcu(ICanDriver& driver, ITimer& timer,
-               WheelSensor& fl, WheelSensor& fr, 
-               WheelSensor& rl, WheelSensor& rr)
-    : BaseEcu(driver, timer), front_left_(fl), front_right_(fr), 
-                               rear_left_(rl), rear_right_(rr) {}
+               IWheelSensor& fl, IWheelSensor& fr,
+               IWheelSensor& rl, IWheelSensor& rr)
+    : BaseEcu(driver, timer), front_left_(fl), front_right_(fr),
+                               rear_left_(rl),  rear_right_(rr) {}
 ```
 
-For simulation-oriented builds, `src/sim/` provides header-only implementations (`SimRpmSensor`, `SimTempSensor`, `SimWheelSensor`).
+Concrete implementations are provided by the runner at construction time:
+- `SimEngine` (in `src/platform/linux/sim/`) implements all three motor interfaces and is passed as three separate references to `MotorEcu`. 
+- `SimWheelSensor` implements `IWheelSensor` and is instantiated once per wheel in the ABS runner.
+
+## IMotorController Interface
+
+`IMotorController` decouples the Motor ECU from any specific actuator implementation.
+`MotorEcu` calls `setTargetRpm()` when a `MotorControl` CAN frame is received, without knowing whether the target is applied to a simulated engine or a real actuator.
+
+```cpp
+// src/common/imotor_controller.h
+class IMotorController {
+public:
+    virtual ~IMotorController() = default;
+    virtual void setTargetRpm(uint16_t rpm) noexcept = 0;
+};
+```
+
+
+Concrete implementations are provided by the runner at construction time. See `src/platform/linux/sim/` for simulation builds and `src/platform/linux/runner/` for wiring details.
+
+In the runner, `SimEngine` implements `RpmSensor`, `TempSensor`, and `IMotorController` and is passed as all three to `MotorEcu`.
 
 ## Build System
 
@@ -244,7 +289,7 @@ CMake is used with distinct targets per layer:
 
 `can_dbc` is produced from `src/dbc/vcansim.c`, which is generated at configure time by a CMake custom command invoking `cantools generate_c_source`. The generated files are not tracked in version control.
 
-**`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
+**`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/runner/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
 **`unit_tests`** validates signal encoding and ECU unit behavior with mocks.
 
@@ -265,7 +310,7 @@ For detailed validation and CI behavior, see [Testing](testing.md).
 | Dedicated CAN receive thread in GUI (`CanWorker`) | Keeps the UI thread responsive; `CanWorker` emits Qt signals to `MainWindow` via queued connection, avoiding any direct cross-thread UI access |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
 | `ITimer` interface | Decouples ECU loop timing from OS-specific sleep |
-| `ISensor<T>` template interface | Decouples ECU logic from sensor implementations. Each ECU injects the specific sensors it needs. Enables simulation (header-only `Sim*Sensor` classes) and future hardware integration. |
+|`IMotorController` and named sensors interfaces | Decouples the ECU from the actuator implementation (introduced for testability) |
 | `BaseEcu` abstract class | Shared lifecycle, driver and timer reference, avoids duplication across ECUs |
 | `bool` return for driver | Minimal error propagation. Error details intentionally not propagated. A typed status enum is a possible future extension. |
 | Single-threaded ECU design | Each ECU runs a blocking loop controlled by `run()` and `stop()`. No internal threading. Each ECU is launched as an independent process. |
