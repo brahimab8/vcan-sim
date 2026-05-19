@@ -9,7 +9,7 @@ VcanSim is structured in five layers. Each layer has a single responsibility and
 | Layer | Path | Language | Responsibility |
 |---|---|---|---|
 | ECU Layer | `src/ecu/` | C++ | ECU behavior, frame emission, and command reception logic |
-| Driver Layer | `src/platform/linux/socketcan/`, `src/platform/linux/`, `src/platform/linux/runner/` | C++ | Linux SocketCAN driver, Linux timer, and runner entry points |
+| Driver Layer | `src/platform/linux/socketcan/`, `src/platform/linux/` | C++ | Linux SocketCAN driver, Linux timer |
 | Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, and abstract ECU base class |
 | DBC Layer | `src/dbc/` | C (generated) | DBC-generated signal pack/unpack/encode/decode functions, shared by ECUs and monitor |
 | Monitoring | `tools/monitor/` | C++ | Live CAN frame decoding and CSV logging using DBC-generated code |
@@ -265,7 +265,7 @@ public:
 ```
 
 
-Concrete implementations are provided by the runner at construction time. See `src/platform/linux/sim/` for simulation builds and `src/platform/linux/runner/` for wiring details.
+Concrete implementations are provided by the runner at construction time. See `src/platform/linux/sim/` for simulation builds and `apps/*_ecu/` for wiring details.
 
 In the runner, `SimEngine` implements `RpmSensor`, `TempSensor`, and `IMotorController` and is passed as all three to `MotorEcu`.
 
@@ -289,7 +289,7 @@ CMake is used with distinct targets per layer:
 
 `can_dbc` is produced from `src/dbc/vcansim.c`, which is generated at configure time by a CMake custom command invoking `cantools generate_c_source`. The generated files are not tracked in version control.
 
-**`motor_ecu`** and **`abs_ecu`** are the ECU runner executables placed under `src/platform/linux/runner/`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
+**`motor_ecu`** and **`abs_ecu`** are the ECU runner executables built from `apps/*_ecu/` and linked against `can_ecu` and `can_platform`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
 **`unit_tests`** validates signal encoding and ECU unit behavior with mocks.
 

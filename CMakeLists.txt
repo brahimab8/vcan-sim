@@ -86,9 +86,12 @@ target_link_libraries(can_platform PUBLIC
 # Runner executables: live ECU processes for Linux/vcan0
 # -----------------------------------------------------------------------------
 add_executable(motor_ecu
-    src/platform/linux/runner/motor_ecu_main.cpp
+    apps/motor_ecu/main.cpp
 )
 target_include_directories(motor_ecu PRIVATE
+    apps
+    src/ecu
+    src/platform/linux/socketcan
     src/platform/linux/sim
     src/common
 )
@@ -98,9 +101,12 @@ target_link_libraries(motor_ecu PRIVATE
 )
 
 add_executable(abs_ecu
-    src/platform/linux/runner/abs_ecu_main.cpp
+    apps/abs_ecu/main.cpp
 )
 target_include_directories(abs_ecu PRIVATE
+    apps
+    src/ecu
+    src/platform/linux/socketcan
     src/platform/linux/sim
     src/common
 )
