@@ -12,12 +12,16 @@
 struct AbsEcuFixture {
     MockCanDriver driver;
     MockTimer     timer;
-    MockSensor<uint16_t> front_left_sensor{{0, 100}};
-    MockSensor<uint16_t> front_right_sensor{{0, 102}};
-    MockSensor<uint16_t> rear_left_sensor{{0, 98}};
-    MockSensor<uint16_t> rear_right_sensor{{0, 99}};
+    MockWheelSensor front_left_sensor{{0, 100}};
+    MockWheelSensor front_right_sensor{{0, 102}};
+    MockWheelSensor rear_left_sensor{{0, 98}};
+    MockWheelSensor rear_right_sensor{{0, 99}};
     AbsEcu        ecu{driver, timer, front_left_sensor, front_right_sensor, rear_left_sensor, rear_right_sensor};
 };
+
+// ---------------------------------------------------------------------------
+// Frame structure
+// ---------------------------------------------------------------------------
 
 TEST(AbsEcuTick, SendsExactlyOneFrame)
 {
@@ -39,6 +43,10 @@ TEST(AbsEcuTick, FrameHasCorrectDlc)
     f.ecu.tick();
     EXPECT_EQ(f.driver.sentFrames()[0].dlc, VCANSIM_ABS_STATUS_LENGTH);
 }
+
+// ---------------------------------------------------------------------------
+// Signal values
+// ---------------------------------------------------------------------------
 
 TEST(AbsEcuTick, FirstTickEncodesAllFourWheels)
 {
@@ -87,6 +95,10 @@ TEST(AbsEcuTick, ReadsUpdatedWheelSensorValuesOnEachTick)
     EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fl_decode(msg0.wheel_fl), 0.0f);
     EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fl_decode(msg1.wheel_fl), 10.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Timer isolation
+// ---------------------------------------------------------------------------
 
 TEST(AbsEcuTick, DoesNotCallTimer)
 {

@@ -19,10 +19,10 @@ TEST(AbsEcuIntegration, EncodingOnTickSequence)
 {
     MockCanDriver         driver;
     EcuRunLimiterTimer timer{99};
-    MockSensor<uint16_t>  fl{{0, 100, 200}};
-    MockSensor<uint16_t>  fr{{0, 102, 202}};
-    MockSensor<uint16_t>  rl{{0, 98, 198}};
-    MockSensor<uint16_t>  rr{{0, 99, 199}};
+    MockWheelSensor       fl{{0, 100, 200}};
+    MockWheelSensor       fr{{0, 102, 202}};
+    MockWheelSensor       rl{{0, 98, 198}};
+    MockWheelSensor       rr{{0, 99, 199}};
 
     AbsEcu ecu{driver, timer, fl, fr, rl, rr};
 
@@ -53,10 +53,10 @@ TEST(AbsEcuIntegration, RunStopsAfterConfiguredCycles)
 {
     MockCanDriver         driver;
     EcuRunLimiterTimer timer{4};
-    MockSensor<uint16_t>  fl{{0, 100, 200, 300}};
-    MockSensor<uint16_t>  fr{{0, 102, 202, 302}};
-    MockSensor<uint16_t>  rl{{0, 98, 198, 298}};
-    MockSensor<uint16_t>  rr{{0, 99, 199, 299}};
+    MockWheelSensor       fl{{0, 100, 200, 300}};
+    MockWheelSensor       fr{{0, 102, 202, 302}};
+    MockWheelSensor       rl{{0, 98, 198, 298}};
+    MockWheelSensor       rr{{0, 99, 199, 299}};
 
     // This test verifies the ECU run loop timing and stop behavior. The
     // EcuRunLimiterTimer (deterministic test timer) will call stop() on the

@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
 #include "mock_can_driver.h"
+#include "mock_motor_controller.h"
 #include "mock_sensor.h"
 #include "mock_timer.h"
+#include "vcansim.h"
+
 #include "motor_ecu.h"
-#include "vcansim.h" // Generated from vcansim.dbc by cantools
 
 // ---------------------------------------------------------------------------
 // Helper: construct a MotorEcu with fresh mocks
@@ -12,10 +14,15 @@
 struct MotorEcuFixture {
     MockCanDriver driver;
     MockTimer     timer;
-    MockSensor<uint16_t> rpm_sensor{{800, 1200}};
-    MockSensor<int16_t>  temp_sensor{{20, 45}};
-    MotorEcu      ecu{driver, timer, rpm_sensor, temp_sensor};
+    MockRpmSensor       rpm_sensor{{800, 1200}};
+    MockTempSensor      temp_sensor{{20, 45}};
+    MockMotorController motor_controller;
+    MotorEcu            ecu{driver, timer, rpm_sensor, temp_sensor, motor_controller};
 };
+
+// ---------------------------------------------------------------------------
+// Frame structure
+// ---------------------------------------------------------------------------
 
 TEST(MotorEcuTick, SendsExactlyOneFrame)
 {
@@ -40,6 +47,10 @@ TEST(MotorEcuTick, FrameHasCorrectDlc)
 
     EXPECT_EQ(f.driver.sentFrames()[0].dlc, VCANSIM_MOTOR_STATUS_LENGTH);
 }
+
+// ---------------------------------------------------------------------------
+// Signal values
+// ---------------------------------------------------------------------------
 
 TEST(MotorEcuTick, FirstTickEncodesFirstRpmProfile)
 {
@@ -81,10 +92,52 @@ TEST(MotorEcuTick, ReadsUpdatedSensorValuesOnEachTick)
     EXPECT_FLOAT_EQ(vcansim_motor_status_rpm_decode(msg1.rpm), 1200.0f);
 }
 
+// ---------------------------------------------------------------------------
+// Timer isolation
+// ---------------------------------------------------------------------------
+
 TEST(MotorEcuTick, DoesNotCallTimer)
 {
     MotorEcuFixture f;
     f.ecu.tick();
 
     EXPECT_EQ(f.timer.callCount(), 0U);
+}
+
+// ---------------------------------------------------------------------------
+// MotorControl command handling
+// ---------------------------------------------------------------------------
+
+TEST(MotorEcuTick, IgnoresIncomingFrameWithWrongId)
+{
+    MotorEcuFixture f;
+
+    CanFrame wrong{};
+    wrong.id  = 0x999;
+    wrong.dlc = 2;
+    f.driver.enqueueReceiveFrame(wrong);
+
+    f.ecu.tick();
+
+    EXPECT_EQ(f.motor_controller.callCount(), 0U);
+}
+
+TEST(MotorEcuTick, ForwardsValidCommandToMotorController)
+{
+    MotorEcuFixture f;
+
+    vcansim_motor_control_t cmd{};
+    cmd.target_rpm = vcansim_motor_control_target_rpm_encode(3000.0f);
+
+    CanFrame frame{};
+    frame.id  = VCANSIM_MOTOR_CONTROL_FRAME_ID;
+    frame.dlc = VCANSIM_MOTOR_CONTROL_LENGTH;
+    vcansim_motor_control_pack(frame.data.data(), &cmd, frame.data.size());
+
+    f.driver.enqueueReceiveFrame(frame);
+
+    f.ecu.tick();
+
+    ASSERT_EQ(f.motor_controller.callCount(), 1U);
+    EXPECT_EQ(f.motor_controller.calls()[0], 3000U);
 }

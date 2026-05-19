@@ -1,13 +1,14 @@
 #include <cstdint>
 #include <iomanip>   // Formatting tools for streams (hex, setw, setfill)
-#include <iostream> 
+#include <iostream>
 #include <sstream>   // String stream (used to build strings like a buffer)
 #include <string>
 
-#include "abs_ecu.h"         
-#include "motor_ecu.h"       
+#include "abs_ecu.h"
+#include "motor_ecu.h"
 
 #include "mock_can_driver.h"
+#include "mock_motor_controller.h"
 #include "mock_sensor.h"
 #include "mock_timer.h"
 
@@ -18,7 +19,6 @@ namespace {
     {
         // Create a string stream
         std::ostringstream oss;
-
         // Set formatting rules:
         // std::hex -> print numbers in base 16
         // std::setfill('0') -> pad missing digits with '0'
@@ -46,7 +46,6 @@ namespace {
             // Print:
             // topic, frame ID, data length, payload in hex
             std::cout << topic << ','
-
                       // CAN message identifier
                       << frame.id << ','
 
@@ -62,29 +61,27 @@ namespace {
     }
 
 } // end anonymous namespace
-// Functions above are private to this file only
 
-// Program entry point
 int main()
 {
-    // -----------------------------
-    // FIRST TEST: Motor ECU
-    // -----------------------------
+    // -------------------------------------------------------------------------
+    // Motor ECU: two tick cycles with injected RPM, temp, and motor controller
+    // -------------------------------------------------------------------------
     {
         // Fake CAN driver to collect outgoing messages
         MockCanDriver driver;
 
         // Fake timer for ECU timing logic
         MockTimer timer;
-
         // Fake RPM sensor returning values between 800 and 1200
-        MockSensor<uint16_t> rpm_sensor{{800, 1200}};
-
+        MockRpmSensor       rpm_sensor{{800, 1200}};
         // Fake engine temperature sensor returning 20 to 45 degrees
-        MockSensor<int16_t> temp_sensor{{20, 45}};
+        MockTempSensor      temp_sensor{{20, 45}};
+        
+        // Mock motor controller (not relevant for this test, but required by MotorEcu constructor)
+        MockMotorController motor_controller;
 
-        // Create Motor ECU with dependencies injected
-        MotorEcu motor{driver, timer, rpm_sensor, temp_sensor};
+        MotorEcu motor{driver, timer, rpm_sensor, temp_sensor, motor_controller};
 
         // Run ECU logic twice (simulate two cycles of operation)
         motor.tick();
@@ -94,21 +91,19 @@ int main()
         dumpFrames("motor", driver.sentFrames());
     }
 
-    // -----------------------------
-    // SECOND TEST: ABS ECU
-    // -----------------------------
+    // -------------------------------------------------------------------------
+    // ABS ECU: two tick cycles with injected wheel speed sensors
+    // -------------------------------------------------------------------------
     {
         // New independent fake CAN driver
         MockCanDriver driver;
-
         // New fake timer
         MockTimer timer;
-
         // Fake wheel speed sensors (front left, front right, rear left, rear right)
-        MockSensor<uint16_t> fl{{0, 100}};
-        MockSensor<uint16_t> fr{{0, 102}};
-        MockSensor<uint16_t> rl{{0, 98}};
-        MockSensor<uint16_t> rr{{0, 99}};
+        MockWheelSensor fl{{0, 100}};
+        MockWheelSensor fr{{0, 102}};
+        MockWheelSensor rl{{0, 98}};
+        MockWheelSensor rr{{0, 99}};
 
         // Create ABS ECU with sensor inputs
         AbsEcu abs{driver, timer, fl, fr, rl, rr};

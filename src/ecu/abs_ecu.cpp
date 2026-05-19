@@ -4,10 +4,10 @@
 AbsEcu::AbsEcu(
     ICanDriver& driver,
     ITimer& timer,
-    WheelSensor& front_left_sensor,
-    WheelSensor& front_right_sensor,
-    WheelSensor& rear_left_sensor,
-    WheelSensor& rear_right_sensor)
+    IWheelSensor& front_left_sensor,
+    IWheelSensor& front_right_sensor,
+    IWheelSensor& rear_left_sensor,
+    IWheelSensor& rear_right_sensor)
     : BaseEcu(driver, timer)
     , front_left_sensor_(front_left_sensor)
     , front_right_sensor_(front_right_sensor)
@@ -27,10 +27,10 @@ void AbsEcu::run()
 
 void AbsEcu::tick()
 {
-    const uint16_t fl = front_left_sensor_.read();
-    const uint16_t fr = front_right_sensor_.read();
-    const uint16_t rl = rear_left_sensor_.read();
-    const uint16_t rr = rear_right_sensor_.read();
+    const uint16_t fl = front_left_sensor_.readSpeed();
+    const uint16_t fr = front_right_sensor_.readSpeed();
+    const uint16_t rl = rear_left_sensor_.readSpeed();
+    const uint16_t rr = rear_right_sensor_.readSpeed();
 
     vcansim_abs_status_t msg{};
     msg.wheel_fl = vcansim_abs_status_wheel_fl_encode(static_cast<float>(fl) * 0.1f);
