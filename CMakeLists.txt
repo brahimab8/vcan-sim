@@ -111,7 +111,7 @@ target_link_libraries(abs_ecu PRIVATE
 
 # -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
-# Links against can_common and can_ecu  (no platform dependency)
+# Links against can_common and can_ecu  (no SocketCAN / OS dependency)
 # -----------------------------------------------------------------------------
 find_package(GTest REQUIRED)
 enable_testing()
@@ -119,9 +119,11 @@ enable_testing()
 add_executable(unit_tests
     tests/unit/test_motor_ecu.cpp
     tests/unit/test_abs_ecu.cpp
+    tests/unit/test_sim_engine.cpp
 )
 target_include_directories(unit_tests PRIVATE
     tests/mocks
+    src/platform/linux/sim
 )
 target_link_libraries(unit_tests PRIVATE
     can_dbc
