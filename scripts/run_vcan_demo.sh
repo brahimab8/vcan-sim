@@ -7,7 +7,7 @@
 # 1. Checks for vcan kernel support (aborts if unavailable)
 # 2. Sets up vcan0 interface
 # 3. Starts motor_ecu and abs_ecu in background
-# 4. Runs can_monitor.py to collect decoded frames into per-message CSVs and log
+# 4. Runs the C++ `monitoring_app` to collect decoded frames into per-message CSVs and log
 # 5. Stops ECU processes cleanly
 # 6. Collects artifacts into data/ folder
 #
@@ -38,10 +38,9 @@ fi
 
 MOTOR_BIN="${BINARY_DIR}/motor_ecu"
 ABS_BIN="${BINARY_DIR}/abs_ecu"
+MONITORING_APP_BIN="${BINARY_DIR}/monitoring_app"
 
 DBC_FILE="${REPO_ROOT}/dbc/vcansim.dbc"
-PYTHON_VENV="${REPO_ROOT}/venv"
-MONITOR_SCRIPT="${REPO_ROOT}/tools/can_monitor.py"
 
 # Output paths
 DATA_DIR="${REPO_ROOT}/data"
@@ -92,7 +91,7 @@ mkdir -p "${CSV_DIR}"   # data/csv/ holds one file per message
 [[ -x "${MOTOR_BIN}" ]] || die "motor_ecu executable not found at ${MOTOR_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 [[ -x "${ABS_BIN}" ]] || die "abs_ecu executable not found at ${ABS_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 [[ -f "${DBC_FILE}" ]] || die "DBC file not found at ${DBC_FILE}"
-[[ -f "${MONITOR_SCRIPT}" ]] || die "Monitor script not found at ${MONITOR_SCRIPT}"
+[[ -x "${MONITORING_APP_BIN}" ]] || die "monitoring_app executable not found at ${MONITORING_APP_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 
 # Step 4: Start ECU processes in background
 echo "[demo] Starting motor_ecu..."
@@ -111,18 +110,8 @@ sleep 0.5
 # Step 5: Run monitor for the specified duration, collect CSV and logs
 echo "[demo] Running monitor for ${DEMO_DURATION_SECONDS}s, writing CSVs to ${CSV_DIR}/..."
 
-# Determine python executable
-PYTHON_BIN="${PYTHON_VENV}/bin/python"
-if [[ ! -f "${PYTHON_BIN}" ]]; then
-    PYTHON_BIN="python3"
-fi
-
-# Run monitor with timeout and capture output
-timeout "${DEMO_DURATION_SECONDS}" "${PYTHON_BIN}" "${MONITOR_SCRIPT}" \
-    --interface "${VCAN_INTERFACE}" \
-    --dbc "${DBC_FILE}" \
-    --csv-dir  "${CSV_DIR}" \
-    >"${MONITOR_LOG}" 2>&1 || true  # timeout returns 124 on expiration; || true prevents set -e from aborting
+# Run C++ monitor with timeout and capture output
+timeout "${DEMO_DURATION_SECONDS}" "${MONITORING_APP_BIN}" "${VCAN_INTERFACE}" "${DBC_FILE}" >"${MONITOR_LOG}" 2>&1 || true
 
 echo "[demo] Monitor finished."
 
