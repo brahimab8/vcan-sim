@@ -83,6 +83,24 @@ target_link_libraries(can_platform PUBLIC
 )
 
 # -----------------------------------------------------------------------------
+# can_monitor: Reusable monitor/decoder library
+# Decodes DBC frames and logs to CSV; shared by monitoring_app and future Qt UI
+# -----------------------------------------------------------------------------
+add_library(can_monitor STATIC
+    src/monitor/decoder.cpp
+    src/monitor/csv_logger.cpp
+    src/monitor/monitor_core.cpp
+    src/monitor/monitor_session.cpp
+)
+target_include_directories(can_monitor PUBLIC
+    src/monitor
+)
+target_link_libraries(can_monitor PUBLIC
+    can_dbc
+    can_common
+)
+
+# -----------------------------------------------------------------------------
 # Runner executables: live ECU processes for Linux/vcan0
 # -----------------------------------------------------------------------------
 add_executable(motor_ecu
@@ -115,6 +133,20 @@ target_link_libraries(abs_ecu PRIVATE
     can_platform
 )
 
+add_executable(monitoring_app
+    apps/monitor/main.cpp
+)
+target_include_directories(monitoring_app PRIVATE
+    apps
+    src/platform/linux
+    src/platform/linux/socketcan
+    src/common
+)
+target_link_libraries(monitoring_app PRIVATE
+    can_monitor
+    can_platform
+)
+
 # -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
 # Links against can_common and can_ecu  (no SocketCAN / OS dependency)
@@ -126,6 +158,10 @@ add_executable(unit_tests
     tests/unit/test_motor_ecu.cpp
     tests/unit/test_abs_ecu.cpp
     tests/unit/test_sim_engine.cpp
+    tests/unit/test_csv_logger.cpp
+    tests/unit/test_decoder.cpp
+    tests/unit/test_monitor_core.cpp
+    tests/unit/test_monitor_session.cpp
 )
 target_include_directories(unit_tests PRIVATE
     tests/mocks
@@ -135,6 +171,7 @@ target_link_libraries(unit_tests PRIVATE
     can_dbc
     can_common
     can_ecu
+    can_monitor
     GTest::GTest
     GTest::Main
 )
