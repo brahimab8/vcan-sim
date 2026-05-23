@@ -11,9 +11,10 @@ VcanSim is structured in five layers. Each layer has a single responsibility and
 | ECU Layer | `src/ecu/` | C++ | ECU behavior, frame emission, and command reception logic |
 | Driver Layer | `src/platform/linux/socketcan/`, `src/platform/linux/` | C++ | Linux SocketCAN driver, Linux timer |
 | Common Layer | `src/common/` | C++ | Platform-independent types, interfaces, and abstract ECU base class |
+| Monitor Core | `src/monitor/` | C++ | Reusable decoder and CSV logging for apps (monitor, GUI) |
 | DBC Layer | `src/dbc/` | C (generated) | DBC-generated signal pack/unpack/encode/decode functions, shared by ECUs and monitor |
-| Monitoring | `tools/monitor/` | C++ | Live CAN frame decoding and CSV logging using DBC-generated code |
-| GUI | `tools/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input |
+| Monitoring App | `apps/monitor/` | C++ | Live CAN frame decoding and CSV logging (runner entry point) |
+| GUI App | `apps/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input (runner entry point) |
 
 Simulation data sources used by the runners are provided in `src/platform/linux/` (`SimWheelSensor`, `SimEngine`).
 
@@ -125,35 +126,40 @@ classDiagram
 > ECU processes communicate with the monitoring layer exclusively through
 > the `vcan0` virtual CAN bus.
 
+The `monitor_core` library provides reusable business logic (frame decoding and CSV logging).
+Application runners (for example, `monitoring_app` and future `vcan_ui`) instantiate a `SocketCanDriver`, construct a `MonitorCore` and a `MonitorSession`, and run the monitoring loop via `MonitorSession::run()`.
+
 ```mermaid
 classDiagram
 
-    class CanMonitor {
-        -int socket_fd
-        -bool running
-        +CanMonitor(string interface)
+    class DecodedMessage {
+        +string name
+        +list~string~ columns
+        +list~string~ values
+    }
+
+    class Decoder {
+        +DecodedMessage decodeFrameWithDbc(CanFrame)$ void
+    }
+
+    class CsvLogger {
+        -map~string, ofstream~ files_
+        +writeRow(string msg, list cols, list vals) void
+    }
+
+    class MonitorSession {
+        -ICanDriver& driver_
+        -MonitorCore& core_
+        -ostream& output_
+        +MonitorSession(ICanDriver&, MonitorCore&, ostream&)
+        +pumpOnce() bool
         +run() void
         +stop() void
-        -decodeFrame(CanFrame) void
-        -writeCsv(string msg, map signals) void
     }
 
-    class CanWorker {
-        -CanMonitor monitor
-        +run() void
-        +stop() void
-        +signalReceived(string msg, map signals)$ void
-    }
-
-    class MainWindow {
-        -CanWorker worker
-        +MainWindow()
-        +updateSignals(string msg, map signals) void
-        -sendTargetRpm(uint16_t rpm) void
-    }
-
-    CanWorker --> CanMonitor
-    CanWorker ..> MainWindow : Qt signal/slot
+    Decoder ..> DecodedMessage
+    MonitorSession ..> Decoder
+    MonitorSession ..> CsvLogger
 ```
 
 ## Signal Encoding
@@ -279,11 +285,12 @@ CMake is used with distinct targets per layer:
 | `can_common` | Static library | — |
 | `can_ecu` | Static library | `can_common`, `can_dbc` |
 | `can_platform` | Static library | `can_common` |
+| `can_monitor` | Static library | `can_dbc`, `can_common` |
 | `motor_ecu` | Executable | `can_ecu`, `can_platform` |
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
-| `can_monitor` | Executable | `can_common`, `can_dbc`, `can_platform` |
-| `vcan_ui` | Executable | `can_common`, `can_dbc`, Qt Widgets |
-| `unit_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |
+| `monitoring_app` | Executable | `can_monitor`, `can_platform` |
+| `vcan_ui` | Executable | `can_monitor`, `can_platform`, Qt Widgets |
+| `unit_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, `can_monitor`, GoogleTest |
 | `integration_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |
 | `frame_dump` | Executable | `can_common`, `can_ecu` |
 

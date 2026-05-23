@@ -10,7 +10,7 @@ Built on Linux SocketCAN (`vcan`), it runs the real kernel CAN stack without any
 ## Overview
 
 VcanSim consists of two simulated ECU nodes that produce realistic CAN traffic over a virtual bus,
-and a Python-based monitor that decodes and logs signals in real time using a DBC file.
+and a C++ monitor that decodes and logs signals using the DBC-generated C helpers.
 
 ECU logic is decoupled from the platform-specific CAN driver via an `ICanDriver` interface,
 improving portability and testability.
@@ -21,7 +21,7 @@ At runtime, the Motor and ABS ECUs are launched by separate runner executables, 
 
 - Two C++ ECU simulators producing realistic CAN traffic over a virtual bus
 - DBC-based signal definition (compatible with CANalyzer and cantools) and manual encoding in C++
-- Live signal monitoring and CSV logging via `python-can` and `cantools`
+- Live signal monitoring and CSV logging via the native C++ `monitoring_app` (DBC-generated C helpers)
 - Optional raw frame inspection using `candump`
 - GoogleTest unit tests and Python integration tests
 ## Architecture
@@ -40,7 +40,7 @@ graph TD
 
     subgraph MONITORING[Monitoring]
         CANDUMP["candump \n(raw inspection)"]
-        CANTOOLS["cantools \n(DBC decoding)"]
+        MONAPP["C++ monitor\n(monitoring_app)"]
         CSV[CSV Log]
     end
 
@@ -49,9 +49,9 @@ graph TD
     IFACE --> DRV
     DRV -->|raw CAN frames| VCAN
     VCAN -->|raw frames| CANDUMP
-    VCAN -->|raw frames| CANTOOLS
-    DBC -->|signal definitions| CANTOOLS
-    CANTOOLS -->|signal values| CSV
+    VCAN -->|raw frames| MONAPP
+    DBC -->|signal definitions| MONAPP
+    MONAPP -->|signal values| CSV
 ```
 
 **ECU (Electronic Control Unit):** a simulated vehicle node that sends cyclic CAN messages. VcanSim includes a Motor ECU (RPM, temperature) and an ABS ECU (wheel speeds). Each runs as an independent Linux process.
@@ -69,61 +69,6 @@ graph TD
 **DBC file:** an industry-standard file format that defines CAN message IDs, signal names, scaling, offset, and units. Used by tools like CANalyzer and cantools.
 
 **CSV Logs:** the output of the monitor script, one file per message type, with one row per decoded frame.
-
-## Project Structure
-
-```
-vcan-sim/
-│
-├── src/
-│   ├── common/                         # Platform-independent core
-│   │   ├── can_frame.h                 # CanFrame struct
-│   │   ├── ican_driver.h               # Abstract CAN driver interface
-│   │   ├── itimer.h                    # Abstract timer interface
-│   │   ├── isensor.h                   # Abstract sensor interface and type aliases
-│   │   ├── signal_encoder.h / .cpp     # Bit encoding / decoding
-│   │   └── base_ecu.h / .cpp           # Abstract base class for all ECUs
-│   │
-│   ├── platform/
-│   │   └── linux/                      # Linux-specific implementations
-│   │       ├── timer.h / .cpp          # Linux timer
-│   │       └── socketcan/              # Linux SocketCAN driver
-│   │           ├── driver.h
-│   │           └── driver.cpp
-│   │
-│   ├── ecu/                            # ECU simulators
-│   │   ├── motor_ecu.h / .cpp
-│   │   └── abs_ecu.h / .cpp
-│   │
-│   ├── sim/                            # Simulation sensor implementations
-│   │   ├── rpm_sensor.h
-│   │   ├── temp_sensor.h
-│   │   └── wheel_sensor.h
-│
-├── tools/
-│   └── can_monitor.py                  # Live decoder + CSV logger
-│
-├── tests/
-│   ├── mocks/                          # Test doubles
-│   ├── unit/                           # GoogleTest unit tests
-│   └── integration/                    # GoogleTest and Python integration tests
-│
-├── dbc/
-│   └── vcansim.dbc                     # Signal definitions
-│
-├── docs/
-│   ├── requirements.md
-│   ├── architecture.md
-│   ├── testing.md
-│   └── signal-encoding.md
-│
-├── scripts/
-│   └── run_vcan_demo.sh                # Orchestrates live vcan0 demo
-│
-├── data/                               # Demo outputs (CSV/log) generated at runtime
-│
-└── CMakeLists.txt
-```
 
 ## Getting Started
 
@@ -210,6 +155,12 @@ writing CSVs to: data/csv/
 1778796278.237407 id=0x100 dlc=3 msg=MotorStatus signals={'RPM': 2500.0, 'Temperature': 88}
 1778796278.242311 id=0x200 dlc=8 msg=ABSStatus signals={'Wheel_FL': 60.0, 'Wheel_FR': 60.5, 'Wheel_RL': 59.5, 'Wheel_RR': 59.800000000000004}
 ```
+## References
+
+- [cantools](https://github.com/cantools/cantools) : DBC parsing and C code generation
+- [python-can](https://python-can.readthedocs.io) : CAN interface library
+- [SocketCAN](https://docs.kernel.org/networking/can.html) : Linux kernel CAN subsystem
+- [GoogleTest](https://github.com/google/googletest) : C++ test framework
 
 ## License
 
