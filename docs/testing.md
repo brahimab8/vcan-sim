@@ -76,7 +76,7 @@ If Python venv or dependencies are missing, `ctest` will still run C++ tests; Py
 
 ## Mocks
 
-`tests/mocks/` contains `MockCanDriver`, `MockTimer`, and `MockSensor<T>` used to keep tests deterministic and free of OS/hardware.
+`tests/mocks/` contains `MockCanDriver`, `MockTimer`, `MockRpmSensor`, `MockTempSensor`, `MockWheelSensor`, and `MockMotorController` used to keep tests deterministic and free of OS/hardware. The sensor mocks share replay logic via a common `MockSensor` base template.
 
 ## CI / GitHub Actions
 

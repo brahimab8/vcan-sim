@@ -1,0 +1,24 @@
+#pragma once
+
+#include <optional>
+#include <string>
+
+#include "can_frame.h"
+#include "csv_logger.h"
+
+// MonitorCore decodes CAN frames, optionally logs decoded rows to CSV,
+// and produces a short textual summary for console output.
+class MonitorCore {
+public:
+    MonitorCore(std::optional<std::string> dbc_path, std::optional<std::string> csv_dir);
+
+    // Decode the frame, optionally write a CSV row, and return a compact summary.
+    std::string processFrame(const CanFrame& frame);
+
+private:
+    static std::string toHexId(uint32_t id);
+    static std::string toDataHex(const CanFrame& frame);
+
+    std::optional<std::string> dbc_path_;
+    std::optional<CsvLogger> logger_;
+};

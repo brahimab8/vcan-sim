@@ -1,14 +1,13 @@
 #include "abs_ecu.h"
-
-#include "signal_encoder.h"
+#include "vcansim.h" // Generated from vcansim.dbc by cantools
 
 AbsEcu::AbsEcu(
     ICanDriver& driver,
     ITimer& timer,
-    WheelSensor& front_left_sensor,
-    WheelSensor& front_right_sensor,
-    WheelSensor& rear_left_sensor,
-    WheelSensor& rear_right_sensor)
+    IWheelSensor& front_left_sensor,
+    IWheelSensor& front_right_sensor,
+    IWheelSensor& rear_left_sensor,
+    IWheelSensor& rear_right_sensor)
     : BaseEcu(driver, timer)
     , front_left_sensor_(front_left_sensor)
     , front_right_sensor_(front_right_sensor)
@@ -26,30 +25,23 @@ void AbsEcu::run()
     }
 }
 
-uint16_t AbsEcu::speedToRaw(uint16_t speed_deci_kmh)
-{
-    if (speed_deci_kmh > MAX_WHEEL_RAW) {
-        return MAX_WHEEL_RAW;
-    }
-    return speed_deci_kmh;
-}
-
 void AbsEcu::tick()
 {
-    const uint16_t fl = front_left_sensor_.read();
-    const uint16_t fr = front_right_sensor_.read();
-    const uint16_t rl = rear_left_sensor_.read();
-    const uint16_t rr = rear_right_sensor_.read();
+    const uint16_t fl = front_left_sensor_.readSpeed();
+    const uint16_t fr = front_right_sensor_.readSpeed();
+    const uint16_t rl = rear_left_sensor_.readSpeed();
+    const uint16_t rr = rear_right_sensor_.readSpeed();
+
+    vcansim_abs_status_t msg{};
+    msg.wheel_fl = vcansim_abs_status_wheel_fl_encode(static_cast<float>(fl) * 0.1f);
+    msg.wheel_fr = vcansim_abs_status_wheel_fr_encode(static_cast<float>(fr) * 0.1f);
+    msg.wheel_rl = vcansim_abs_status_wheel_rl_encode(static_cast<float>(rl) * 0.1f);
+    msg.wheel_rr = vcansim_abs_status_wheel_rr_encode(static_cast<float>(rr) * 0.1f);
 
     CanFrame frame{};
-    frame.id  = CAN_ID;
-    frame.dlc = FRAME_DLC;
-
-    // Wheel sensors provide deci-km/h values directly as raw (scale 0.1).
-    SignalEncoder::encodeUint16LE(frame, 0, speedToRaw(fl));
-    SignalEncoder::encodeUint16LE(frame, 2, speedToRaw(fr));
-    SignalEncoder::encodeUint16LE(frame, 4, speedToRaw(rl));
-    SignalEncoder::encodeUint16LE(frame, 6, speedToRaw(rr));
+    frame.id  = VCANSIM_ABS_STATUS_FRAME_ID;
+    frame.dlc = VCANSIM_ABS_STATUS_LENGTH;
+    vcansim_abs_status_pack(frame.data.data(), &msg, frame.data.size());
 
     if (!driver_.send(frame)) {
         // send failed. no retry or error propagation in this simulator

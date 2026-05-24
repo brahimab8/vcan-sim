@@ -6,7 +6,7 @@
 
 #include "abs_ecu.h"
 #include "base_ecu.h"
-#include "signal_encoder.h"
+#include "vcansim.h"
 
 #include "mock_can_driver.h"
 #include "mock_sensor.h"
@@ -19,10 +19,10 @@ TEST(AbsEcuIntegration, EncodingOnTickSequence)
 {
     MockCanDriver         driver;
     EcuRunLimiterTimer timer{99};
-    MockSensor<uint16_t>  fl{{0, 100, 200}};
-    MockSensor<uint16_t>  fr{{0, 102, 202}};
-    MockSensor<uint16_t>  rl{{0, 98, 198}};
-    MockSensor<uint16_t>  rr{{0, 99, 199}};
+    MockWheelSensor       fl{{0, 100, 200}};
+    MockWheelSensor       fr{{0, 102, 202}};
+    MockWheelSensor       rl{{0, 98, 198}};
+    MockWheelSensor       rr{{0, 99, 199}};
 
     AbsEcu ecu{driver, timer, fl, fr, rl, rr};
 
@@ -33,42 +33,30 @@ TEST(AbsEcuIntegration, EncodingOnTickSequence)
     // We expect three frames because we called tick() three times.
     ASSERT_EQ(driver.sentFrameCount(), 3U);
 
-    uint16_t fl0 = 0, fr0 = 0, rl0 = 0, rr0 = 0;
-    uint16_t fl2 = 0, fr2 = 0, rl2 = 0, rr2 = 0;
+    vcansim_abs_status_t msg0{}, msg2{};
+    vcansim_abs_status_unpack(&msg0, driver.sentFrames()[0].data.data(), driver.sentFrames()[0].dlc);
+    vcansim_abs_status_unpack(&msg2, driver.sentFrames()[2].data.data(), driver.sentFrames()[2].dlc);
 
-    // Decode the first captured frame and verify wheel values are placed at
-    // the expected byte offsets (0,2,4,6) as uint16 LE values.
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[0], 0, fl0);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[0], 2, fr0);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[0], 4, rl0);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[0], 6, rr0);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fl_decode(msg0.wheel_fl), 0.0f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fr_decode(msg0.wheel_fr), 0.0f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_rl_decode(msg0.wheel_rl), 0.0f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_rr_decode(msg0.wheel_rr), 0.0f);
 
-    // Decode the third captured frame (index 2) to verify later profile values
-    // were encoded correctly on subsequent ticks.
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[2], 0, fl2);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[2], 2, fr2);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[2], 4, rl2);
-    SignalEncoder::decodeUint16LE(driver.sentFrames()[2], 6, rr2);
-
-    EXPECT_EQ(fl0, AbsEcu::speedToRaw(0));
-    EXPECT_EQ(fr0, AbsEcu::speedToRaw(0));
-    EXPECT_EQ(rl0, AbsEcu::speedToRaw(0));
-    EXPECT_EQ(rr0, AbsEcu::speedToRaw(0));
-
-    EXPECT_EQ(fl2, AbsEcu::speedToRaw(200));
-    EXPECT_EQ(fr2, AbsEcu::speedToRaw(202));
-    EXPECT_EQ(rl2, AbsEcu::speedToRaw(198));
-    EXPECT_EQ(rr2, AbsEcu::speedToRaw(199));
+    // sensor provides deci-km/h, ECU converts to km/h before encoding
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fl_decode(msg2.wheel_fl), 20.0f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_fr_decode(msg2.wheel_fr), 20.2f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_rl_decode(msg2.wheel_rl), 19.8f);
+    EXPECT_FLOAT_EQ(vcansim_abs_status_wheel_rr_decode(msg2.wheel_rr), 19.9f);
 }
 
 TEST(AbsEcuIntegration, RunStopsAfterConfiguredCycles)
 {
     MockCanDriver         driver;
     EcuRunLimiterTimer timer{4};
-    MockSensor<uint16_t>  fl{{0, 100, 200, 300}};
-    MockSensor<uint16_t>  fr{{0, 102, 202, 302}};
-    MockSensor<uint16_t>  rl{{0, 98, 198, 298}};
-    MockSensor<uint16_t>  rr{{0, 99, 199, 299}};
+    MockWheelSensor       fl{{0, 100, 200, 300}};
+    MockWheelSensor       fr{{0, 102, 202, 302}};
+    MockWheelSensor       rl{{0, 98, 198, 298}};
+    MockWheelSensor       rr{{0, 99, 199, 299}};
 
     // This test verifies the ECU run loop timing and stop behavior. The
     // EcuRunLimiterTimer (deterministic test timer) will call stop() on the
