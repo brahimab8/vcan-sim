@@ -312,7 +312,7 @@ For detailed validation and CI behavior, see [Testing](testing.md).
 
 | Decision | Rationale |
 |---|---|
-| Python for test automation | pytest validates the DBC file and codegen pipeline as a regression check; core signal correctness is covered by C++ unit and integration tests |
+| DBC integration tests | pytest validates the DBC file and codegen pipeline as a regression check; core signal correctness is covered by C++ unit and integration tests |
 | `can_dbc` shared static library | Generated code compiled once, linked by ECUs, monitor, and GUI |
 | Dedicated CAN receive thread in GUI (`CanWorker`) | Keeps the UI thread responsive; `CanWorker` emits Qt signals to `MainWindow` via queued connection, avoiding any direct cross-thread UI access |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |

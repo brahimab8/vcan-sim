@@ -6,7 +6,7 @@ This project uses three test tiers:
 
 - **C++ unit tests** (GoogleTest): validation in isolation
 - **C++ integration tests** (GoogleTest): component interaction
-- **Python integration tests** (pytest + cantools): DBC signal validation
+- **DBC integration tests** (pytest + cantools): DBC signal validation
 
 No hardware or `vcan0` is required.
 
@@ -21,13 +21,13 @@ mkdir -p build && cd build
 cmake ..
 # Build C++ test binaries and ensure build prerequisites are ready
 cmake --build . -j2
-# Run all tests: C++ (unit + integration) + Python DBC
+# Run all tests: C++ (unit + integration) + DBC integration
 ctest --verbose
 ```
 
 Notes:
-`ctest` runs all registered tests (C++ unit, C++ integration, Python DBC) without building.
-If Python venv or dependencies are missing, `ctest` will still run C++ tests; Python tests run only if the environment is configured at CMake configure time.
+`ctest` runs all registered tests (C++ unit, C++ integration, DBC integration) without building.
+If the DBC integration environment is missing, `ctest` will still run C++ tests; the DBC test runs only if the environment is configured at CMake configure time.
 
 ## C++ unit tests
 
@@ -53,7 +53,7 @@ If Python venv or dependencies are missing, `ctest` will still run C++ tests; Py
   ctest --verbose --tests-regex "integration"
   ```
 
-## Python integration tests (DBC)
+## DBC integration tests
 
 - **Purpose:** Validate that C++ frame encoding produces byte sequences that decode correctly via the industry-standard DBC specification using cantools. Tests verify end-to-end signal value accuracy.
 - **Setup (one-time):**
@@ -80,7 +80,7 @@ If Python venv or dependencies are missing, `ctest` will still run C++ tests; Py
 
 ## CI / GitHub Actions
 
-CI validates three test tiers via `ctest` (unit, C++ integration, Python DBC integration).
+CI validates three test tiers via `ctest` (unit, C++ integration, DBC integration).
 
 GitHub Actions runs all three test tiers automatically on push. See `.github/workflows/ci.yml`.
 

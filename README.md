@@ -10,7 +10,7 @@ Built on Linux SocketCAN (`vcan`), it runs the real kernel CAN stack without any
 ## Overview
 
 VcanSim consists of two simulated ECU nodes that produce realistic CAN traffic over a virtual bus,
-and a C++ monitor that decodes and logs signals using the DBC-generated C helpers.
+and a C++ monitor that decodes and logs signals using DBC-generated C helpers shared with the ECUs.
 
 ECU logic is decoupled from the platform-specific CAN driver via an `ICanDriver` interface,
 improving portability and testability.
@@ -20,10 +20,9 @@ At runtime, the Motor and ABS ECUs are launched by separate runner executables, 
 ## Features
 
 - Two C++ ECU simulators producing realistic CAN traffic over a virtual bus
-- DBC-based signal definition (compatible with CANalyzer and cantools) and manual encoding in C++
-- Live signal monitoring and CSV logging via the native C++ `monitoring_app` (DBC-generated C helpers)
-- Optional raw frame inspection using `candump`
-- GoogleTest unit tests and Python integration tests
+- DBC-based signal definition and generated C/H files shared by the ECUs and monitor
+- Live signal monitoring and CSV logging via the native C++ `monitoring_app`
+- GoogleTest unit tests and integration tests
 ## Architecture
 
 ```mermaid
@@ -37,9 +36,9 @@ graph TD
 
     VCAN["vcan0 (Virtual CAN Bus)"]
     DBC[/vcansim.dbc/]
+    GEN["DBC-generated C/H files"]
 
     subgraph MONITORING[Monitoring]
-        CANDUMP["candump \n(raw inspection)"]
         MONAPP["C++ monitor\n(monitoring_app)"]
         CSV[CSV Log]
     end
@@ -48,9 +47,11 @@ graph TD
     ABS -->|encode| IFACE
     IFACE --> DRV
     DRV -->|raw CAN frames| VCAN
-    VCAN -->|raw frames| CANDUMP
     VCAN -->|raw frames| MONAPP
-    DBC -->|signal definitions| MONAPP
+    DBC -->|generate| GEN
+    GEN -->|shared code| MOTOR
+    GEN -->|shared code| ABS
+    GEN -->|shared code| MONAPP
     MONAPP -->|signal values| CSV
 ```
 
@@ -62,9 +63,7 @@ graph TD
 
 **vcan0:** a virtual CAN bus provided by the Linux kernel SocketCAN module. It behaves identically to a physical CAN bus but requires no hardware.
 
-**candump:** a standard Linux tool from `can-utils` that reads raw CAN frames directly from the bus.
-
-**cantools:** a Python library that parses DBC files and decodes raw CAN frame bytes into readable signal values such as RPM or temperature.
+**cantools:** used as DBC code-generation tool that produces the shared C/H files used by the ECUs and the monitor.
 
 **DBC file:** an industry-standard file format that defines CAN message IDs, signal names, scaling, offset, and units. Used by tools like CANalyzer and cantools.
 
@@ -81,7 +80,7 @@ graph TD
 
 **System packages:**
 ```bash
-sudo apt install -y cmake g++ libgtest-dev python3-venv
+sudo apt install -y cmake g++ libgtest-dev
 ```
 
 **Python dependencies:**
@@ -92,9 +91,9 @@ python3 -m venv venv
 ```
 
 This installs:
-- `cantools` — DBC parsing and frame decoding
-- `pytest` — test runner
-- `python-can` — CAN utilities (optional for live monitoring)
+- `cantools` — DBC code generation
+- `pytest` — DBC integration test runner
+- `python-can` — optional CAN utilities used by the integration test environment
 
 ### Build
 
@@ -158,7 +157,6 @@ writing CSVs to: data/csv/
 ## References
 
 - [cantools](https://github.com/cantools/cantools) : DBC parsing and C code generation
-- [python-can](https://python-can.readthedocs.io) : CAN interface library
 - [SocketCAN](https://docs.kernel.org/networking/can.html) : Linux kernel CAN subsystem
 - [GoogleTest](https://github.com/google/googletest) : C++ test framework
 
