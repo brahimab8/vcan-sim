@@ -28,8 +28,8 @@ At runtime, the Motor and ABS ECUs are launched by separate runner executables, 
 ```mermaid
 graph TD
     subgraph ECUs[ECU Layer]
-        MOTOR["Motor ECU\n0x100 · 100 ms"]
-        ABS["ABS ECU\n0x200 · 20 ms"]
+        MOTOR["Motor ECU"]
+        ABS["ABS ECU"]
         IFACE[ICanDriver]
         DRV[SocketCanDriver]
     end
@@ -38,8 +38,9 @@ graph TD
     DBC[/vcansim.dbc/]
     GEN["DBC-generated C/H files"]
 
-    subgraph MONITORING[Monitoring]
-        MONAPP["C++ monitor\n(monitoring_app)"]
+    subgraph APPS[Monitoring and Control]
+        MONAPP["Monitoring App"]
+        MOTOR_CTRL["Motor Control CLI"]
         CSV[CSV Log]
     end
 
@@ -47,7 +48,10 @@ graph TD
     ABS -->|encode| IFACE
     IFACE --> DRV
     DRV -->|raw CAN frames| VCAN
-    VCAN -->|raw frames| MONAPP
+
+    MONAPP --> IFACE
+    MOTOR_CTRL --> IFACE
+
     DBC -->|generate| GEN
     GEN -->|shared code| MOTOR
     GEN -->|shared code| ABS

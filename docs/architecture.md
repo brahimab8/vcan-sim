@@ -15,6 +15,7 @@ VcanSim is structured in five layers. Each layer has a single responsibility and
 | DBC Layer | `src/dbc/` | C (generated) | DBC-generated signal pack/unpack/encode/decode functions, shared by ECUs and monitor |
 | Monitoring App | `apps/monitor/` | C++ | Live CAN frame decoding and CSV logging (runner entry point) |
 | GUI App | `apps/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input (runner entry point) |
+| Control Layer | `src/control/`, `apps/motor_control/` | C++ | Reusable `can_control` client library and a small `motor_control` CLI to send `MotorControl` frames to the CAN bus |
 
 Simulation data sources used by the runners are provided in `src/platform/linux/` (`SimWheelSensor`, `SimEngine`).
 
@@ -286,9 +287,11 @@ CMake is used with distinct targets per layer:
 | `can_ecu` | Static library | `can_common`, `can_dbc` |
 | `can_platform` | Static library | `can_common` |
 | `can_monitor` | Static library | `can_dbc`, `can_common` |
+| `can_control` | Static library | `can_common`, `can_dbc` |
 | `motor_ecu` | Executable | `can_ecu`, `can_platform` |
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `monitoring_app` | Executable | `can_monitor`, `can_platform` |
+| `motor_control` | Executable | `can_control`, `can_platform` |
 | `vcan_ui` | Executable | `can_monitor`, `can_platform`, Qt Widgets |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, `can_monitor`, GoogleTest |
 | `integration_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |

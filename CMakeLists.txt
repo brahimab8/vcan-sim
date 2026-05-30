@@ -101,6 +101,21 @@ target_link_libraries(can_monitor PUBLIC
 )
 
 # -----------------------------------------------------------------------------
+# can_control: reusable MotorControl command client
+# Sends DBC-encoded MotorControl frames over ICanDriver implementations
+# -----------------------------------------------------------------------------
+add_library(can_control STATIC
+    src/control/motor_control_client.cpp
+)
+target_include_directories(can_control PUBLIC
+    src/control
+)
+target_link_libraries(can_control PUBLIC
+    can_dbc
+    can_common
+)
+
+# -----------------------------------------------------------------------------
 # Runner executables: live ECU processes for Linux/vcan0
 # -----------------------------------------------------------------------------
 add_executable(motor_ecu
@@ -147,6 +162,20 @@ target_link_libraries(monitoring_app PRIVATE
     can_platform
 )
 
+add_executable(motor_control
+    apps/motor_control/main.cpp
+)
+target_include_directories(motor_control PRIVATE
+    apps
+    src/platform/linux
+    src/platform/linux/socketcan
+    src/common
+)
+target_link_libraries(motor_control PRIVATE
+    can_control
+    can_platform
+)
+
 # -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
 # Links against can_common and can_ecu  (no SocketCAN / OS dependency)
@@ -162,6 +191,7 @@ add_executable(unit_tests
     tests/unit/test_decoder.cpp
     tests/unit/test_monitor_core.cpp
     tests/unit/test_monitor_session.cpp
+    tests/unit/test_motor_control.cpp
 )
 target_include_directories(unit_tests PRIVATE
     tests/mocks
@@ -172,6 +202,7 @@ target_link_libraries(unit_tests PRIVATE
     can_common
     can_ecu
     can_monitor
+    can_control
     GTest::GTest
     GTest::Main
 )
@@ -184,10 +215,12 @@ add_test(NAME unit_tests COMMAND unit_tests)
 # -----------------------------------------------------------------------------
 add_executable(integration_tests
     tests/integration/test_motor_integration.cpp
+    tests/integration/test_motor_control_integration.cpp
     tests/integration/test_abs_integration.cpp
 )
 target_include_directories(integration_tests PRIVATE
     tests/mocks
+    src/platform/linux/sim
     tests/integration/utils
 )
 target_link_libraries(integration_tests PRIVATE

@@ -39,6 +39,7 @@ fi
 MOTOR_BIN="${BINARY_DIR}/motor_ecu"
 ABS_BIN="${BINARY_DIR}/abs_ecu"
 MONITORING_APP_BIN="${BINARY_DIR}/monitoring_app"
+MOTOR_CONTROL_BIN="${BINARY_DIR}/motor_control"
 
 DBC_FILE="${REPO_ROOT}/dbc/vcansim.dbc"
 
@@ -92,6 +93,7 @@ mkdir -p "${CSV_DIR}"   # data/csv/ holds one file per message
 [[ -x "${ABS_BIN}" ]] || die "abs_ecu executable not found at ${ABS_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 [[ -f "${DBC_FILE}" ]] || die "DBC file not found at ${DBC_FILE}"
 [[ -x "${MONITORING_APP_BIN}" ]] || die "monitoring_app executable not found at ${MONITORING_APP_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
+[[ -x "${MOTOR_CONTROL_BIN}" ]] || die "motor_control executable not found at ${MOTOR_CONTROL_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 
 # Step 4: Start ECU processes in background
 echo "[demo] Starting motor_ecu..."
@@ -103,6 +105,11 @@ echo "[demo] Starting abs_ecu..."
 "${ABS_BIN}" &
 ABS_PID=$!
 echo "[demo] abs_ecu started (PID $ABS_PID)"
+
+echo "[demo] Sending motor control command (motor_control)..."
+"${MOTOR_CONTROL_BIN}" 3000 "${VCAN_INTERFACE}" &
+MOTOR_CONTROL_PID=$!
+echo "[demo] motor_control started (PID $MOTOR_CONTROL_PID)"
 
 # Brief pause to let ECUs initialize
 sleep 0.5
