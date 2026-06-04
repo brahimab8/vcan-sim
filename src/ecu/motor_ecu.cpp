@@ -39,10 +39,12 @@ void MotorEcu::tick()
         // error handling deferred to future iterations.
     }
 
-    // Check for an incoming MotorControl command and update the RPM target if received.
+    // Drain pending frames so control commands are not delayed behind other bus traffic.
     CanFrame cmd{};
-    if (driver_.receive(cmd) && cmd.id == VCANSIM_MOTOR_CONTROL_FRAME_ID) {
-        handleCommand(cmd);
+    while (driver_.receive(cmd)) {
+        if (cmd.id == VCANSIM_MOTOR_CONTROL_FRAME_ID) {
+            handleCommand(cmd);
+        }
     }
 }
 
