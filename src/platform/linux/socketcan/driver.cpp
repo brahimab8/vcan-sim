@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <utility>
 
 #include <linux/can.h>
@@ -19,6 +20,12 @@ SocketCanDriver::SocketCanDriver(std::string interface_name)
     socket_fd_ = ::socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (socket_fd_ < 0) {
         return;
+    }
+    // Set the socket to non-blocking mode so that receive calls return immediately 
+    // if no frames are available, rather than blocking indefinitely.
+    const int flags = ::fcntl(socket_fd_, F_GETFL, 0);
+    if (flags >= 0) {
+        ::fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
     }
 
     struct ifreq ifr {};
@@ -86,6 +93,9 @@ bool SocketCanDriver::receive(CanFrame& frame)
     struct can_frame raw_frame {};
     const ssize_t read_size = ::read(socket_fd_, &raw_frame, sizeof(raw_frame));
     if (read_size != static_cast<ssize_t>(sizeof(raw_frame))) {
+        if (read_size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            return false;
+        }
         return false;
     }
 
