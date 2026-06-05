@@ -21,10 +21,14 @@ public:
 
     uint16_t readRpm() noexcept override
     {
-        if (current_rpm_ < target_rpm_)
+        if (current_rpm_ < target_rpm_) {
             current_rpm_ = std::min<uint16_t>(current_rpm_ + kRpmStep, target_rpm_);
-        else if (current_rpm_ > target_rpm_)
-            current_rpm_ = std::max<uint16_t>(current_rpm_ - kRpmStep, target_rpm_);
+        } else if (current_rpm_ > target_rpm_) {
+            if (current_rpm_ >= target_rpm_ + kRpmStep)
+                current_rpm_ -= kRpmStep;
+            else
+                current_rpm_ = target_rpm_;  // snap to target rather than underflow
+        }
         return current_rpm_;
     }
 
