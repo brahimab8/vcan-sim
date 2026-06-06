@@ -1,13 +1,13 @@
 #!/bin/bash
 # run_vcan_demo.sh: Orchestrate Motor and ABS ECU demo on vcan0 with live monitoring
 #
-# Usage: bash scripts/run_vcan_demo.sh
+# Usage: bash scripts/run_vcan_demo.sh [cli|ui]
 #
 # This script:
 # 1. Checks for vcan kernel support (aborts if unavailable)
 # 2. Sets up vcan0 interface
 # 3. Starts motor_ecu and abs_ecu in background
-# 4. Runs the C++ `monitoring_app` to collect decoded frames into per-message CSVs and log
+# 4. Runs the C++ `monitoring_app` by default, or `vcan_ui` with the `ui` arg
 # 5. Stops ECU processes cleanly
 # 6. Collects artifacts into data/ folder
 #
@@ -21,6 +21,25 @@ set -e
 # Configuration
 VCAN_INTERFACE="vcan0"
 DEMO_DURATION_SECONDS=5  # Let ECUs run for 5 seconds
+MODE="cli"
+
+if [[ $# -gt 1 ]]; then
+    echo "Usage: bash scripts/run_vcan_demo.sh [cli|ui]" >&2
+    exit 1
+fi
+
+if [[ $# -eq 1 ]]; then
+    MODE="$1"
+fi
+
+case "${MODE}" in
+    cli|ui)
+        ;;
+    *)
+        echo "Usage: bash scripts/run_vcan_demo.sh [cli|ui]" >&2
+        exit 1
+        ;;
+esac
 
 # Resolve script location and repository source directory reliably
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +58,7 @@ fi
 MOTOR_BIN="${BINARY_DIR}/motor_ecu"
 ABS_BIN="${BINARY_DIR}/abs_ecu"
 MONITORING_APP_BIN="${BINARY_DIR}/monitoring_app"
+VCAN_UI_BIN="${BINARY_DIR}/vcan_ui"
 MOTOR_CONTROL_BIN="${BINARY_DIR}/motor_control"
 
 DBC_FILE="${REPO_ROOT}/dbc/vcansim.dbc"
@@ -69,33 +89,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Step 0: Check vcan availability and load module
-echo "[setup] Loading vcan kernel module..."
-if ! sudo modprobe vcan 2>/dev/null; then
-    echo "[setup] vcan kernel module not available on this system."
-    exit 2
-fi
+# Step 0: Set up the vcan interface
+"${SCRIPT_DIR}/setup_vcan.sh" "${VCAN_INTERFACE}"
 
-# Step 1: Set up vcan0
-echo "[setup] Creating/bringing up ${VCAN_INTERFACE}..."
-sudo ip link add dev "${VCAN_INTERFACE}" type vcan || true  # Ignore if already exists
-sudo ip link set up "${VCAN_INTERFACE}" || die "Failed to bring up ${VCAN_INTERFACE}"
-echo "[setup] ${VCAN_INTERFACE} is ready"
-
-# Step 2: Create output directories
-#-p: no error if already exists
+# Step 1: Create output directories
 mkdir -p "${CSV_DIR}"   # data/csv/ holds one file per message
 
-# Step 3: Verify binaries exist
+# Step 2: Verify binaries exist
 # -f checks if file exists
 # -x checks if file exists and is executable
 [[ -x "${MOTOR_BIN}" ]] || die "motor_ecu executable not found at ${MOTOR_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 [[ -x "${ABS_BIN}" ]] || die "abs_ecu executable not found at ${ABS_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 [[ -f "${DBC_FILE}" ]] || die "DBC file not found at ${DBC_FILE}"
-[[ -x "${MONITORING_APP_BIN}" ]] || die "monitoring_app executable not found at ${MONITORING_APP_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
+if [[ "${MODE}" == "ui" ]]; then
+    [[ -x "${VCAN_UI_BIN}" ]] || die "vcan_ui executable not found at ${VCAN_UI_BIN}. Reconfigure/build with Qt Widgets available first."
+else
+    [[ -x "${MONITORING_APP_BIN}" ]] || die "monitoring_app executable not found at ${MONITORING_APP_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
+fi
 [[ -x "${MOTOR_CONTROL_BIN}" ]] || die "motor_control executable not found at ${MOTOR_CONTROL_BIN}. Run 'cmake --build ${BINARY_DIR} -j2' first."
 
-# Step 4: Start ECU processes in background
+# Step 3: Start ECU processes in background
 echo "[demo] Starting motor_ecu..."
 "${MOTOR_BIN}" &
 MOTOR_PID=$!
@@ -114,40 +127,50 @@ echo "[demo] motor_control started (PID $MOTOR_CONTROL_PID)"
 # Brief pause to let ECUs initialize
 sleep 0.5
 
-# Step 5: Run monitor for the specified duration, collect CSV and logs
-echo "[demo] Running monitor for ${DEMO_DURATION_SECONDS}s, writing CSVs to ${CSV_DIR}/..."
+# Step 4: Run the chosen UI/monitor frontend
+if [[ "${MODE}" == "ui" ]]; then
+    echo "[demo] Launching Qt UI..."
+    "${VCAN_UI_BIN}" "${VCAN_INTERFACE}"
+    echo "[demo] Qt UI finished."
+else
+    echo "[demo] Running monitor for ${DEMO_DURATION_SECONDS}s, writing CSVs to ${CSV_DIR}/..."
 
-# Run C++ monitor with timeout and capture output
-timeout "${DEMO_DURATION_SECONDS}" "${MONITORING_APP_BIN}" "${VCAN_INTERFACE}" "${DBC_FILE}" >"${MONITOR_LOG}" 2>&1 || true
+    # Run C++ monitor with timeout and capture output
+    timeout "${DEMO_DURATION_SECONDS}" "${MONITORING_APP_BIN}" "${VCAN_INTERFACE}" "${DBC_FILE}" >"${MONITOR_LOG}" 2>&1 || true
 
-echo "[demo] Monitor finished."
+    echo "[demo] Monitor finished."
+fi
 
-# Step 6: Let processes finish gracefully
+# Step 5: Let processes finish gracefully
 echo "[demo] Waiting for ECU processes to finish..."
 sleep 1
 
 # Report artifacts
 echo "[demo] Artifacts in ${DATA_DIR}:"
-echo "  Log: ${MONITOR_LOG}"
-
-CSV_COUNT=0
-# Check for CSV files and count lines for each
-# compgen -G checks for files matching the pattern; if none, it returns non-zero
-if compgen -G "${CSV_DIR}/*.csv" > /dev/null 2>&1; then
-    for csv_file in "${CSV_DIR}"/*.csv; do
-        line_count=$(wc -l < "${csv_file}")
-        echo "  CSV: ${csv_file} (${line_count} lines)"
-        (( CSV_COUNT++ )) || true
-    done
-    echo "[demo] ✓ ${CSV_COUNT} CSV file(s) created"
+if [[ "${MODE}" == "ui" ]]; then
+    echo "[demo] UI mode does not write the CLI monitor log by default."
 else
-    echo "[demo] ⚠ No CSV files found in ${CSV_DIR} (check monitor log)"
-fi
+    echo "  Log: ${MONITOR_LOG}"
 
-if [[ -f "${MONITOR_LOG}" ]]; then
-    echo "[demo] ✓ Monitor log created ($(wc -l < "${MONITOR_LOG}") lines)"
-else
-    echo "[demo] ⚠ Monitor log not created"
+    CSV_COUNT=0
+    # Check for CSV files and count lines for each
+    # compgen -G checks for files matching the pattern; if none, it returns non-zero
+    if compgen -G "${CSV_DIR}/*.csv" > /dev/null 2>&1; then
+        for csv_file in "${CSV_DIR}"/*.csv; do
+            line_count=$(wc -l < "${csv_file}")
+            echo "  CSV: ${csv_file} (${line_count} lines)"
+            (( CSV_COUNT++ )) || true
+        done
+        echo "[demo] ✓ ${CSV_COUNT} CSV file(s) created"
+    else
+        echo "[demo] ⚠ No CSV files found in ${CSV_DIR} (check monitor log)"
+    fi
+
+    if [[ -f "${MONITOR_LOG}" ]]; then
+        echo "[demo] ✓ Monitor log created ($(wc -l < "${MONITOR_LOG}") lines)"
+    else
+        echo "[demo] ⚠ Monitor log not created"
+    fi
 fi
 
 echo "[demo] Demo complete!"

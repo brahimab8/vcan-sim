@@ -101,6 +101,21 @@ target_link_libraries(can_monitor PUBLIC
 )
 
 # -----------------------------------------------------------------------------
+# can_ui: Qt-free UI core (CanBridge, UiController)
+# -----------------------------------------------------------------------------
+add_library(can_ui STATIC
+    src/ui/can_bridge.cpp
+    src/ui/ui_controller.cpp
+)
+target_include_directories(can_ui PUBLIC
+    src/ui
+)
+target_link_libraries(can_ui PUBLIC
+    can_monitor
+    can_control
+)
+
+# -----------------------------------------------------------------------------
 # can_control: reusable MotorControl command client
 # Sends DBC-encoded MotorControl frames over ICanDriver implementations
 # -----------------------------------------------------------------------------
@@ -175,6 +190,37 @@ target_link_libraries(motor_control PRIVATE
     can_control
     can_platform
 )
+
+# -----------------------------------------------------------------------------
+# vcan_ui: Qt-based UI (uses can_monitor + can_control)
+# Built only if Qt Widgets are available on the system.
+# -----------------------------------------------------------------------------
+find_package(Qt5 COMPONENTS Widgets QUIET)
+if(Qt5_FOUND)
+    add_executable(vcan_ui
+        apps/ui/main.cpp
+        apps/ui/can_worker_qt.cpp
+        apps/ui/main_window.cpp
+        apps/ui/can_worker_qt.h
+        apps/ui/main_window.h
+    )
+    set_target_properties(vcan_ui PROPERTIES AUTOMOC ON)
+    target_include_directories(vcan_ui PRIVATE
+        apps
+        src
+        src/ui
+        src/monitor
+    )
+    target_link_libraries(vcan_ui PRIVATE
+        Qt5::Widgets
+        can_monitor
+        can_control
+        can_platform
+        can_ui
+    )
+else()
+    message(STATUS "Skipping vcan_ui: Qt5 Widgets not found")
+endif()
 
 # -----------------------------------------------------------------------------
 # unit_tests: GoogleTest suite
