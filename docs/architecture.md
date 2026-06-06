@@ -14,6 +14,7 @@ VcanSim is structured in five layers. Each layer has a single responsibility and
 | Monitor Core | `src/monitor/` | C++ | Reusable decoder and CSV logging for apps (monitor, GUI) |
 | DBC Layer | `src/dbc/` | C (generated) | DBC-generated signal pack/unpack/encode/decode functions, shared by ECUs and monitor |
 | Monitoring App | `apps/monitor/` | C++ | Live CAN frame decoding and CSV logging (runner entry point) |
+| GUI Core | `src/ui/` | C++ | Qt-free UI wiring, bridge, and controller logic shared by the Qt runner |
 | GUI App | `apps/ui/` | C++ / Qt Widgets | Live signal display and target RPM command input (runner entry point) |
 | Control Layer | `src/control/`, `apps/motor_control/` | C++ | Reusable `can_control` client library and a small `motor_control` CLI to send `MotorControl` frames to the CAN bus |
 
@@ -128,7 +129,9 @@ classDiagram
 > the `vcan0` virtual CAN bus.
 
 The `monitor_core` library provides reusable business logic (frame decoding and CSV logging).
-Application runners (for example, `monitoring_app` and future `vcan_ui`) instantiate a `SocketCanDriver`, construct a `MonitorCore` and a `MonitorSession`, and run the monitoring loop via `MonitorSession::run()`.
+Application runners (for example, `monitoring_app`) instantiate a `SocketCanDriver`, construct a `MonitorCore` and a `MonitorSession`, and run the monitoring loop via `MonitorSession::run()`.
+
+The Qt runner keeps its shared behavior in `src/ui/` and adds the Qt-specific widgets and threading glue in `apps/ui/`. It uses `CanBridge` to reuse the monitor decode/logging path and `UiController` to expose ECU descriptors and the MotorControl command workflow.
 
 ```mermaid
 classDiagram
@@ -288,16 +291,19 @@ CMake is used with distinct targets per layer:
 | `can_platform` | Static library | `can_common` |
 | `can_monitor` | Static library | `can_dbc`, `can_common` |
 | `can_control` | Static library | `can_common`, `can_dbc` |
+| `can_ui` | Static library | `can_monitor`, `can_control` |
 | `motor_ecu` | Executable | `can_ecu`, `can_platform` |
 | `abs_ecu` | Executable | `can_ecu`, `can_platform` |
 | `monitoring_app` | Executable | `can_monitor`, `can_platform` |
 | `motor_control` | Executable | `can_control`, `can_platform` |
-| `vcan_ui` | Executable | `can_monitor`, `can_platform`, Qt Widgets |
+| `vcan_ui` | Executable | `can_monitor`, `can_control`, `can_platform`, `can_ui`, Qt Widgets |
 | `unit_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, `can_monitor`, GoogleTest |
 | `integration_tests` | Executable | `can_common`, `can_ecu`, `can_dbc`, GoogleTest |
 | `frame_dump` | Executable | `can_common`, `can_ecu` |
 
 `can_dbc` is produced from `src/dbc/vcansim.c`, which is generated at configure time by a CMake custom command invoking `cantools generate_c_source`. The generated files are not tracked in version control.
+
+`can_ui` is the Qt-free UI core. It contains the reusable bridge and controller logic used by the Qt runner, while `apps/ui/` handles the Qt Widgets application shell, threading, and windowing.
 
 **`motor_ecu`** and **`abs_ecu`** are the ECU runner executables built from `apps/*_ecu/` and linked against `can_ecu` and `can_platform`. Each instantiates its ECU class with a `SocketCanDriver` and `LinuxTimer`, then calls `run()`.
 
@@ -307,7 +313,7 @@ CMake is used with distinct targets per layer:
 
 **`python_integration`** is a unified target that builds `frame_dump` and runs pytest against `tests/integration/test_frames.py`.
 
-For live runtime orchestration, `scripts/run_vcan_demo.sh` launches the Linux `vcan0` simulation flow and collects monitor artifacts.
+For live runtime orchestration, `scripts/setup_vcan.sh` brings up the Linux `vcan0` interface, and `scripts/run_vcan_demo.sh` launches the ECU processes plus either the CLI monitor or the Qt UI and collects artifacts.
 
 For detailed validation and CI behavior, see [Testing](testing.md).
 
@@ -316,7 +322,8 @@ For detailed validation and CI behavior, see [Testing](testing.md).
 | Decision | Rationale |
 |---|---|
 | DBC integration tests | pytest validates the DBC file and codegen pipeline as a regression check; core signal correctness is covered by C++ unit and integration tests |
-| `can_dbc` shared static library | Generated code compiled once, linked by ECUs, monitor, and GUI |
+| `can_dbc` shared static library | Generated code compiled once, linked by ECUs, monitor, control client, and GUI |
+| Qt-free `can_ui` core | Keeps monitor decoding and MotorControl wiring reusable outside the Qt widget layer |
 | Dedicated CAN receive thread in GUI (`CanWorker`) | Keeps the UI thread responsive; `CanWorker` emits Qt signals to `MainWindow` via queued connection, avoiding any direct cross-thread UI access |
 | `ICanDriver` interface | Decouples ECU logic from driver, clean and testable design |
 | `ITimer` interface | Decouples ECU loop timing from OS-specific sleep |

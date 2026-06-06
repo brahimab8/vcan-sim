@@ -22,6 +22,7 @@ At runtime, the Motor and ABS ECUs are launched by separate runner executables, 
 - Two C++ ECU simulators producing realistic CAN traffic over a virtual bus
 - DBC-based signal definition and generated C/H files shared by the ECUs and monitor
 - Live signal monitoring and CSV logging via the native C++ `monitoring_app`
+- Qt Widgets UI with real-time signal display and motor RPM control
 - GoogleTest unit tests and integration tests
 ## Architecture
 
@@ -40,7 +41,7 @@ graph TD
 
     subgraph APPS[Monitoring and Control]
         MONAPP["Monitoring App"]
-        MOTOR_CTRL["Motor Control CLI"]
+        MOTOR_CTRL["Motor Control CLI / UI"]
         CSV[CSV Log]
     end
 
@@ -53,9 +54,9 @@ graph TD
     MOTOR_CTRL --> IFACE
 
     DBC -->|generate| GEN
-    GEN -->|shared code| MOTOR
-    GEN -->|shared code| ABS
-    GEN -->|shared code| MONAPP
+    GEN -->|DBC-codec| MOTOR
+    GEN -->|DBC-codec| ABS
+    GEN -->|DBC-codec| MONAPP
     MONAPP -->|signal values| CSV
 ```
 
@@ -119,15 +120,29 @@ See [Testing](docs/testing.md) for detailed test documentation and individual ex
 
 ### Run Live Simulation (Linux)
 
-This runs the live runtime simulation path: create `vcan0`, start both ECU processes, run monitor, and collect outputs.
+Runs the full simulation: both ECU processes on `vcan0` with either a CLI monitor or a Qt UI.
 
+**Build first:**
 ```bash
-cmake --build build -j2
-bash scripts/run_vcan_demo.sh
+mkdir -p build && cmake -S . -B build && cmake --build build -j2
 ```
 
-- `data/csv/*.csv`
-- `data/monitor.log`
+
+**CLI mode** — runs both ECUs for 5 seconds, writes CSVs and a monitor log:
+```bash
+bash scripts/run_vcan_demo.sh
+# or explicitly:
+bash scripts/run_vcan_demo.sh cli
+```
+
+Output artifacts:
+- `data/csv/*.csv` — one file per CAN message
+- `data/monitor.log` — decoded monitor output
+
+**UI mode** — runs both ECUs and launches the Qt UI (interactive, no log written):
+```bash
+bash scripts/run_vcan_demo.sh ui
+```
 
 ### Example Output
 
@@ -163,6 +178,7 @@ writing CSVs to: data/csv/
 - [cantools](https://github.com/cantools/cantools) : DBC parsing and C code generation
 - [SocketCAN](https://docs.kernel.org/networking/can.html) : Linux kernel CAN subsystem
 - [GoogleTest](https://github.com/google/googletest) : C++ test framework
+- [Qt Widgets](https://doc.qt.io/qt-5/qtwidgets-index.html) : GUI toolkit used by `vcan_ui`
 
 ## License
 
