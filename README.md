@@ -19,29 +19,31 @@ At runtime, the Motor and ABS ECUs are launched by separate runner executables, 
 
 ## Features
 
-- Two C++ ECU simulators producing realistic CAN traffic over a virtual bus
-- DBC-based signal definition and generated C/H files shared by the ECUs and monitor
+- Two independent C++ ECU simulators (`motor_ecu`, `abs_ecu`) producing CAN traffic over a virtual bus
+- DBC-based signal definitions with generated C/H files shared across ECUs, monitor, and UI
 - Live signal monitoring and CSV logging via the native C++ `monitoring_app`
 - Qt Widgets UI with real-time signal display and motor RPM control
-- GoogleTest unit tests and integration tests
+- GoogleTest unit and integration tests
+
 ## Architecture
 
 ```mermaid
 graph TD
     subgraph ECUs[ECU Layer]
-        MOTOR["Motor ECU"]
-        ABS["ABS ECU"]
+        MOTOR[Motor ECU]
+        ABS[ABS ECU]
         IFACE[ICanDriver]
         DRV[SocketCanDriver]
     end
 
-    VCAN["vcan0 (Virtual CAN Bus)"]
-    DBC[/vcansim.dbc/]
-    GEN["DBC-generated C/H files"]
+    VCAN[vcan0 Virtual CAN Bus]
+    DBC[vcansim.dbc]
+    GEN[DBC-generated C/H files]
 
     subgraph APPS[Monitoring and Control]
-        MONAPP["Monitoring App"]
-        MOTOR_CTRL["Motor Control CLI / UI"]
+        MONAPP[Monitoring App]
+        MOTOR_CTRL[Motor Control CLI]
+        UI[Qt UI vcan_ui]
         CSV[CSV Log]
     end
 
@@ -52,11 +54,13 @@ graph TD
 
     MONAPP --> IFACE
     MOTOR_CTRL --> IFACE
+    UI --> IFACE
 
     DBC -->|generate| GEN
     GEN -->|DBC-codec| MOTOR
     GEN -->|DBC-codec| ABS
     GEN -->|DBC-codec| MONAPP
+    GEN -->|DBC-codec| UI
     MONAPP -->|signal values| CSV
 ```
 
@@ -81,6 +85,7 @@ graph TD
 - Linux with GCC and CMake
 - `libgtest-dev`
 - Python 3
+
 ### Install Dependencies
 
 **System packages:**
@@ -103,12 +108,9 @@ This installs:
 ### Build
 
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build . -j2
+mkdir -p build && cmake -S . -B build
+cmake --build build -j2
 ```
-
-This configures and builds the project.
 
 ### Run All Tests
 
@@ -121,12 +123,6 @@ See [Testing](docs/testing.md) for detailed test documentation and individual ex
 ### Run Live Simulation (Linux)
 
 Runs the full simulation: both ECU processes on `vcan0` with either a CLI monitor or a Qt UI.
-
-**Build first:**
-```bash
-mkdir -p build && cmake -S . -B build && cmake --build build -j2
-```
-
 
 **CLI mode** — runs both ECUs for 5 seconds, writes CSVs and a monitor log:
 ```bash
@@ -147,7 +143,6 @@ bash scripts/run_vcan_demo.sh ui
 ### Example Output
 
 The runtime output lives in `data/`, with per-message CSV files under `data/csv/` and a log file (`monitor.log`) capturing decoded CAN frames and runtime activity.
-
 
 #### `MotorStatus.csv`
 
@@ -173,6 +168,7 @@ writing CSVs to: data/csv/
 1778796278.237407 id=0x100 dlc=3 msg=MotorStatus signals={'RPM': 2500.0, 'Temperature': 88}
 1778796278.242311 id=0x200 dlc=8 msg=ABSStatus signals={'Wheel_FL': 60.0, 'Wheel_FR': 60.5, 'Wheel_RL': 59.5, 'Wheel_RR': 59.800000000000004}
 ```
+
 ## References
 
 - [cantools](https://github.com/cantools/cantools) : DBC parsing and C code generation
